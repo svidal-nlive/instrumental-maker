@@ -13,4 +13,9 @@ build/
 *.egg-info/
 .git/
 .gitignore
-# keep .env (copied explicitly)
+.env
+.venv/
+pipeline-data/
+scratch/
+models/
+test-data/
