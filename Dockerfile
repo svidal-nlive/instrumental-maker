@@ -27,4 +27,3 @@ RUN python -c "import torch,demucs,librosa;print('ENV OK: torch',torch.__version
 
 WORKDIR /app
 COPY app /app/app
-COPY .env /app/.env
