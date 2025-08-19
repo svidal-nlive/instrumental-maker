@@ -200,6 +200,13 @@ make logs SERVICE=instrumental-simple
 
 Environment can be provided via `.env` and/or compose `environment:`. Minimal `.env` example:
 
+First time setup:
+
+```bash
+cp .env.example .env
+# then open .env and update values for your environment
+```
+
 ```
 MODEL=htdemucs
 DEMUCS_DEVICE=cpu
