@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+
+# Virtual envs
+.venv/
+.env
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editors/OS
+*.swp
+.DS_Store
+.vscode/
+.idea/
+
+# Build/Dist
+build/
+dist/
+
+# Project data/runtime
+pipeline-data/
+scratch/
+
+# Models/cache
+app/models/
+models/
+
+# Logs
+*.log
+*.jsonl
+
+# Local overrides
+*.local.*

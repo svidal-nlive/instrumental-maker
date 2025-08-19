@@ -1,0 +1,4 @@
+# Dev/test dependencies (mirror runtime minimal set for local testing)
+pytest==8.4.1
+watchdog==6.0.0
+PyYAML==6.0.2

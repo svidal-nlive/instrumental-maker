@@ -1,0 +1,9 @@
+model: htdemucs
+keep_stems: [D, B, O]   # keep drums+bass+other (drop vocals)
+sample_rate: 44100
+bit_depth: 16
+codec: flac
+mix:
+  target_lufs: -14
+  true_peak: -1.0
+  dual_pass_loudnorm: true

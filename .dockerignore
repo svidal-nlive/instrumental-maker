@@ -1,0 +1,16 @@
+# Reduce build context size
+volumes/
+**/__pycache__/
+*.py[cod]
+*.so
+*.pyd
+*.pyo
+*.DS_Store
+*.log
+logs/
+dist/
+build/
+*.egg-info/
+.git/
+.gitignore
+# keep .env (copied explicitly)

@@ -1,0 +1,83 @@
+services:
+  instrumental-simple:
+    image: ${DOCKERHUB_USERNAME:-youruser}/instrumental-maker:latest
+    container_name: instrumental-simple
+    command: ["python", "-u", "-m", "app.main", "simple", "--daemon"]
+    env_file: .env
+    environment:
+      - TORCH_HOME=/models/torch
+      - XDG_CACHE_HOME=/models/xdg
+      - DEMUCS_CACHE=/models/demucs
+      - DEMUCS_DEVICE=cpu
+      - DEMUCS_JOBS=1
+      - MUSIC_LIBRARY=/data/output
+      - MP3_ENCODING=cbr320
+      - CORRUPT_DEST=archive
+    volumes:
+      - ./pipeline-data/incoming:/data/incoming
+      - ./pipeline-data/working:/data/working
+      - ./pipeline-data/output:/data/output
+      - ./pipeline-data/db:/data/db
+      - ./pipeline-data/logs:/data/logs
+      - ./pipeline-data/models:/models
+      - ./pipeline-data/archive:/data/archive
+      - ./pipeline-data/quarantine:/data/quarantine
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: local-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - ./pipeline-data/minio-data:/data
+    restart: unless-stopped
+
+  minio-mirror:
+    image: ${DOCKERHUB_USERNAME:-youruser}/instrumental-maker:latest
+    container_name: minio-mirror
+    command: ["python", "-u", "-m", "app.main", "minio-mirror"]
+    env_file: .env
+    depends_on:
+      - instrumental-simple
+      - minio
+    volumes:
+      - ./pipeline-data/output:/data/output
+      - ./pipeline-data/db:/data/db
+      - ./pipeline-data/logs:/data/logs
+    restart: unless-stopped
+
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: pipeline-filebrowser
+    user: "0:0"
+    ports:
+      - "8095:80"
+    volumes:
+      - ./pipeline-data:/srv
+      - ./test-data:/srv/test-data
+      - ./pipeline-data/filebrowser/database:/database
+      - ./pipeline-data/filebrowser/config:/config
+    restart: unless-stopped
+
+  deemix:
+    image: registry.gitlab.com/bockiii/deemix-docker:latest
+    container_name: pipeline-deemix
+    restart: unless-stopped
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK_SET=022
+      - DEEMIX_SINGLE_USER=true
+    volumes:
+      - ./pipeline-data/deemix/config:/config
+      - ./pipeline-data/incoming:/downloads
+
+networks:
+  default:
+    name: instrumental-maker_default

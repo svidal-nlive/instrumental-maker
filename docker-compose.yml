@@ -1,0 +1,101 @@
+services:
+  instrumental-simple:
+    build: .
+    container_name: instrumental-simple
+    # Use -m so that relative imports inside app package work
+    command: ["python", "-u", "-m", "app.main", "simple", "--daemon"]
+    env_file: .env
+    environment:
+      - TORCH_HOME=/models/torch
+      - XDG_CACHE_HOME=/models/xdg
+      - DEMUCS_CACHE=/models/demucs
+      - DEMUCS_DEVICE=cpu
+      - DEMUCS_JOBS=1
+      - MUSIC_LIBRARY=/data/output
+      # Encoding mode: v0 (default) or cbr320
+      - MP3_ENCODING=cbr320
+  # Where to send corrupt inputs: archive (default) or quarantine
+      - CORRUPT_DEST=archive
+    volumes:
+      - ./pipeline-data/incoming:/data/incoming
+      - ./pipeline-data/working:/data/working
+      - ./pipeline-data/output:/data/output
+      - ./pipeline-data/db:/data/db
+      - ./pipeline-data/logs:/data/logs
+      - ./pipeline-data/models:/models
+      - ./pipeline-data/archive:/data/archive
+      - ./pipeline-data/quarantine:/data/quarantine
+    restart: unless-stopped
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: local-minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    volumes:
+      - ./pipeline-data/minio-data:/data
+    restart: unless-stopped
+
+  minio-mirror:
+    build: .
+    container_name: minio-mirror
+    command: ["python", "-u", "-m", "app.main", "minio-mirror"]
+    env_file: .env
+    depends_on:
+      - instrumental-simple
+      - minio
+    volumes:
+      - ./pipeline-data/output:/data/output
+      - ./pipeline-data/db:/data/db
+      - ./pipeline-data/logs:/data/logs
+    restart: unless-stopped
+
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    container_name: pipeline-filebrowser
+    # Run as root so it can manage root-owned files created by other containers
+    user: "0:0"
+    ports:
+      - "8095:80"  # Web UI
+    volumes:
+      - ./pipeline-data:/srv
+      - ./test-data:/srv/test-data
+      - ./pipeline-data/filebrowser/database:/database
+      - ./pipeline-data/filebrowser/config:/config
+    restart: unless-stopped
+
+  deemix:
+    image: registry.gitlab.com/bockiii/deemix-docker:latest
+    container_name: pipeline-deemix
+    restart: unless-stopped
+    environment:
+      - PUID=0
+      - PGID=0
+      - UMASK_SET=022
+      - DEEMIX_SINGLE_USER=true
+      # For sub-path reverse proxying you could set DEEMIX_LOCATION_BASE, not needed here
+      # - DEEMIX_LOCATION_BASE=/
+    volumes:
+      # Persist Deemix config (cookies, logged-in session)
+      - ./pipeline-data/deemix/config:/config
+      # Write downloads directly into the instrumental-maker pipeline incoming directory
+      - ./pipeline-data/incoming:/downloads
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.deemix.rule=Host(`pdeemix.vectorhost.net`)"
+      - "traefik.http.routers.deemix.entrypoints=websecure"
+      - "traefik.http.routers.deemix.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.deemix.middlewares=security-headers@file"
+      - "traefik.http.services.deemix.loadbalancer.server.port=6595"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
