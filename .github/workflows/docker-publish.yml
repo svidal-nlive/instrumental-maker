@@ -47,16 +47,19 @@ jobs:
             type=ref,event=branch
             type=sha
 
-      - name: Build and push
+    - name: Build and push
         if: env.DOCKERHUB_USERNAME != '' && env.DOCKERHUB_TOKEN != ''
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
+      # Build both arches on tags; only amd64 on branches for speed
+      platforms: ${{ github.ref_type == 'tag' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      cache-from: type=gha
+      cache-to: type=gha,mode=max
 
       - name: Missing Docker Hub secrets
         if: env.DOCKERHUB_USERNAME == '' || env.DOCKERHUB_TOKEN == ''
