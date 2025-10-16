@@ -29,6 +29,7 @@ dist/
 # Project data/runtime
 pipeline-data/
 scratch/
+legacy/
 
 # Models/cache
 app/models/

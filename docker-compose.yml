@@ -1,7 +1,46 @@
 services:
+  webui:
+    build: .
+    container_name: instrumental-webui
+    hostname: instrumental-webui
+    command: ["python", "-u", "-m", "flask", "--app", "app.webui.app:create_app()", "run", "--host", "0.0.0.0", "--port", "5000"]
+    env_file: .env
+    environment:
+      - FLASK_ENV=production
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-me-in-production}
+      - INCOMING_DIR=/data/incoming
+      - MUSIC_LIBRARY=/data/output
+      - WORKING_DIR=/data/working
+      - LOG_DIR=/data/logs
+      - ARCHIVE_DIR=/data/archive
+      - QUARANTINE_DIR=/data/quarantine
+      - DB_PATH=/data/db
+    volumes:
+      - ./pipeline-data/incoming:/data/incoming
+      - ./pipeline-data/working:/data/working
+      - ./pipeline-data/output:/data/output
+      - ./pipeline-data/db:/data/db
+      - ./pipeline-data/logs:/data/logs
+      - ./pipeline-data/archive:/data/archive
+      - ./pipeline-data/quarantine:/data/quarantine
+    networks:
+      - internal
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.instrumental-webui-nsystems.rule=Host(`instrumental.nsystems.live`)
+      - traefik.http.routers.instrumental-webui-nsystems.entrypoints=websecure
+      - traefik.http.routers.instrumental-webui-nsystems.tls=true
+      - traefik.http.routers.instrumental-webui-nsystems.priority=120
+      - traefik.http.routers.instrumental-webui-nsystems.middlewares=secure-headers@docker
+      - traefik.http.services.instrumental-webui.loadbalancer.server.port=5000
+    restart: unless-stopped
+
   instrumental-simple:
     build: .
     container_name: instrumental-simple
+    hostname: instrumental-simple
     # Use -m so that relative imports inside app package work
     command: ["python", "-u", "-m", "app.main", "simple", "--daemon"]
     env_file: .env
@@ -14,7 +53,7 @@ services:
       - MUSIC_LIBRARY=/data/output
       # Encoding mode: v0 (default) or cbr320
       - MP3_ENCODING=cbr320
-  # Where to send corrupt inputs: archive (default) or quarantine
+      # Where to send corrupt inputs: archive (default) or quarantine
       - CORRUPT_DEST=archive
     volumes:
       - ./pipeline-data/incoming:/data/incoming
@@ -25,25 +64,46 @@ services:
       - ./pipeline-data/models:/models
       - ./pipeline-data/archive:/data/archive
       - ./pipeline-data/quarantine:/data/quarantine
+    networks:
+      - internal
     restart: unless-stopped
 
   minio:
     image: quay.io/minio/minio:latest
-    container_name: local-minio
+    container_name: instrumental-minio
     command: server /data --console-address ":9001"
-    ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
     volumes:
       - ./pipeline-data/minio-data:/data
+    networks:
+      - internal
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      # MinIO S3 API
+      - traefik.http.routers.instrumental-minio-api-nsystems.rule=Host(`instrumental-s3.nsystems.live`)
+      - traefik.http.routers.instrumental-minio-api-nsystems.entrypoints=websecure
+      - traefik.http.routers.instrumental-minio-api-nsystems.tls=true
+      - traefik.http.routers.instrumental-minio-api-nsystems.priority=120
+      - traefik.http.routers.instrumental-minio-api-nsystems.middlewares=secure-headers@docker
+      - traefik.http.routers.instrumental-minio-api-nsystems.service=instrumental-minio-api
+      - traefik.http.services.instrumental-minio-api.loadbalancer.server.port=9000
+      # MinIO Console
+      - traefik.http.routers.instrumental-minio-console-nsystems.rule=Host(`instrumental-minio.nsystems.live`)
+      - traefik.http.routers.instrumental-minio-console-nsystems.entrypoints=websecure
+      - traefik.http.routers.instrumental-minio-console-nsystems.tls=true
+      - traefik.http.routers.instrumental-minio-console-nsystems.priority=120
+      - traefik.http.routers.instrumental-minio-console-nsystems.middlewares=secure-headers@docker
+      - traefik.http.routers.instrumental-minio-console-nsystems.service=instrumental-minio-console
+      - traefik.http.services.instrumental-minio-console.loadbalancer.server.port=9001
     restart: unless-stopped
 
   minio-mirror:
     build: .
-    container_name: minio-mirror
+    container_name: instrumental-minio-mirror
     command: ["python", "-u", "-m", "app.main", "minio-mirror"]
     env_file: .env
     depends_on:
@@ -53,49 +113,60 @@ services:
       - ./pipeline-data/output:/data/output
       - ./pipeline-data/db:/data/db
       - ./pipeline-data/logs:/data/logs
+    networks:
+      - internal
     restart: unless-stopped
 
   filebrowser:
     image: filebrowser/filebrowser:latest
-    container_name: pipeline-filebrowser
+    container_name: instrumental-filebrowser
     # Run as root so it can manage root-owned files created by other containers
     user: "0:0"
-    ports:
-      - "8095:80"  # Web UI
     volumes:
       - ./pipeline-data:/srv
       - ./test-data:/srv/test-data
       - ./pipeline-data/filebrowser/database:/database
       - ./pipeline-data/filebrowser/config:/config
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.instrumental-files-nsystems.rule=Host(`instrumental-files.nsystems.live`)
+      - traefik.http.routers.instrumental-files-nsystems.entrypoints=websecure
+      - traefik.http.routers.instrumental-files-nsystems.tls=true
+      - traefik.http.routers.instrumental-files-nsystems.priority=120
+      - traefik.http.routers.instrumental-files-nsystems.middlewares=secure-headers@docker
+      - traefik.http.services.instrumental-files.loadbalancer.server.port=80
     restart: unless-stopped
 
   deemix:
     image: registry.gitlab.com/bockiii/deemix-docker:latest
-    container_name: pipeline-deemix
+    container_name: instrumental-deemix
     restart: unless-stopped
     environment:
       - PUID=0
       - PGID=0
       - UMASK_SET=022
       - DEEMIX_SINGLE_USER=true
-      # For sub-path reverse proxying you could set DEEMIX_LOCATION_BASE, not needed here
-      # - DEEMIX_LOCATION_BASE=/
     volumes:
       # Persist Deemix config (cookies, logged-in session)
       - ./pipeline-data/deemix/config:/config
       # Write downloads directly into the instrumental-maker pipeline incoming directory
       - ./pipeline-data/incoming:/downloads
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=web"
-      - "traefik.http.routers.deemix.rule=Host(`pdeemix.vectorhost.net`)"
-      - "traefik.http.routers.deemix.entrypoints=websecure"
-      - "traefik.http.routers.deemix.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.deemix.middlewares=security-headers@file"
-      - "traefik.http.services.deemix.loadbalancer.server.port=6595"
     networks:
-      - web
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.instrumental-deemix-nsystems.rule=Host(`instrumental-deemix.nsystems.live`)
+      - traefik.http.routers.instrumental-deemix-nsystems.entrypoints=websecure
+      - traefik.http.routers.instrumental-deemix-nsystems.tls=true
+      - traefik.http.routers.instrumental-deemix-nsystems.priority=120
+      - traefik.http.routers.instrumental-deemix-nsystems.middlewares=secure-headers@docker
+      - traefik.http.services.instrumental-deemix.loadbalancer.server.port=6595
 
 networks:
-  web:
+  internal:
+  proxy:
     external: true

@@ -1,6 +1,31 @@
 services:
+  webui:
+    image: ${DOCKER_IMAGE:-ghcr.io/svidal-nlive/instrumental-maker:latest}
+    container_name: instrumental-webui
+    command: ["python", "-u", "-m", "flask", "--app", "app.webui.app:create_app()", "run", "--host", "0.0.0.0", "--port", "5000"]
+    env_file: .env
+    environment:
+      - FLASK_ENV=production
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY:-change-me-in-production}
+      - INCOMING_DIR=/data/incoming
+      - MUSIC_LIBRARY=/data/output
+      - WORKING_DIR=/data/working
+      - LOG_DIR=/data/logs
+      - ARCHIVE_DIR=/data/archive
+      - QUARANTINE_DIR=/data/quarantine
+      - DB_PATH=/data/db
+    volumes:
+      - ./pipeline-data/incoming:/data/incoming
+      - ./pipeline-data/working:/data/working
+      - ./pipeline-data/output:/data/output
+      - ./pipeline-data/db:/data/db
+      - ./pipeline-data/logs:/data/logs
+      - ./pipeline-data/archive:/data/archive
+      - ./pipeline-data/quarantine:/data/quarantine
+    restart: unless-stopped
+
   instrumental-simple:
-    image: ${DOCKERHUB_USERNAME:-youruser}/instrumental-maker:latest
+    image: ${DOCKER_IMAGE:-ghcr.io/svidal-nlive/instrumental-maker:latest}
     container_name: instrumental-simple
     command: ["python", "-u", "-m", "app.main", "simple", "--daemon"]
     env_file: .env
@@ -39,7 +64,7 @@ services:
   #   restart: unless-stopped
 
   # minio-mirror:
-  #   image: ${DOCKERHUB_USERNAME:-youruser}/instrumental-maker:latest
+  #   image: ${DOCKER_IMAGE:-ghcr.io/svidal-nlive/instrumental-maker:latest}
   #   container_name: minio-mirror
   #   command: ["python", "-u", "-m", "app.main", "minio-mirror"]
   #   env_file: .env

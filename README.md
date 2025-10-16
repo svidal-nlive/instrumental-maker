@@ -111,6 +111,8 @@ Below are the most relevant variables (defaults shown). See `app/config.py` for 
   - `MODEL=htdemucs`
   - `DEMUCS_DEVICE=cpu` (cpu|cuda)
   - `DEMUCS_JOBS=1`
+  - `DEMUCS_CHUNK_TIMEOUT_SEC=3600` (timeout per chunk in seconds; 0 = no timeout)
+  - `DEMUCS_MAX_RETRIES=2` (retry attempts for failed chunks)
   - `MP3_ENCODING=v0` (v0|cbr320)
   - `SAMPLE_RATE=44100`, `BIT_DEPTH=16`
   - `FFMPEG_THREADS=0` (0 lets ffmpeg decide)
@@ -177,6 +179,63 @@ pipeline-data/
 ---
 
 ## How to Run
+
+### Option 1: Using Prebuilt Images from GitHub Container Registry (Recommended)
+
+Pull and run the prebuilt Docker images without building locally:
+
+```bash
+# Copy the environment template
+cp .env.example .env
+# Edit .env with your settings (DOCKER_IMAGE is already set to GHCR)
+
+# Pull and start services using prebuilt images
+docker compose -f docker-compose.prebuilt.yml up -d
+
+# Tail logs
+docker compose -f docker-compose.prebuilt.yml logs -f instrumental-simple
+```
+
+The prebuilt images are available at:
+- **GitHub Container Registry (GHCR)**: `ghcr.io/svidal-nlive/instrumental-maker:latest` (recommended)
+- **Docker Hub** (optional): `docker.io/<username>/instrumental-maker:latest`
+
+To use a specific version tag:
+```bash
+# In your .env file, set:
+DOCKER_IMAGE=ghcr.io/svidal-nlive/instrumental-maker:v1.0.0
+```
+
+**For private repositories**: You'll need to authenticate with GHCR:
+```bash
+echo $GITHUB_PAT | docker login ghcr.io -u USERNAME --password-stdin
+```
+
+### Option 2: Running Locally Without Traefik
+
+If you're testing on a machine without Traefik or want direct port access:
+
+```bash
+# Use the local override compose file
+docker compose -f docker-compose.prebuilt.yml -f docker-compose.local.yml up -d
+
+# Services will be accessible at:
+# - Web UI:        http://localhost:5000
+# - File Browser:  http://localhost:8095
+# - MinIO Console: http://localhost:9001 (S3 API at :9000)
+# - Deemix:        http://localhost:6595
+```
+
+You can also use your local IP address or a custom domain (add to `/etc/hosts`):
+```bash
+# Example with custom local domain
+echo "192.168.1.100 instrumental.local" | sudo tee -a /etc/hosts
+
+# Access at: http://instrumental.local:5000
+```
+
+### Option 3: Building Locally
+
 Using Docker Compose (recommended):
 
 ```bash

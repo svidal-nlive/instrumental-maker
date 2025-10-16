@@ -8,7 +8,7 @@ SHELL := /bin/bash
 # Core variables (override if needed)
 PROJECT_NAME ?= instrumental-maker
 COMPOSE ?= docker compose
-SERVICE ?= ingest-watcher
+SERVICE ?= instrumental-simple
 ENV_FILE ?= .env
 
 # Colors
@@ -50,11 +50,13 @@ tail: logs ## Alias for logs
 ps: ## Show container status
 	$(COMPOSE) ps
 
-watcher-rebuild: ## Rebuild only ingest-watcher (no deps)
-	$(COMPOSE) up -d --no-deps --build ingest-watcher
+watcher-rebuild: ## [DEPRECATED] Use 'simple' runner instead
+	@echo "$(R)DEPRECATED: watcher-rebuild is no longer supported.$(Z)"
+	@echo "Use: docker compose up -d --no-deps --build instrumental-simple"
 
-worker-rebuild: ## Rebuild only instrumental-worker (no deps)
-	$(COMPOSE) up -d --no-deps --build instrumental-worker
+worker-rebuild: ## [DEPRECATED] Use 'simple' runner instead
+	@echo "$(R)DEPRECATED: worker-rebuild is no longer supported.$(Z)"
+	@echo "Use: docker compose up -d --no-deps --build instrumental-simple"
 
 mirror-rebuild: ## Rebuild only minio-mirror (no deps)
 	$(COMPOSE) up -d --no-deps --build minio-mirror
@@ -83,9 +85,9 @@ archive-dir: ## Show archive directory contents (if configured)
 	 echo "Archive: $$ARCH"; \
 	 find "$$ARCH" -maxdepth 3 -type f 2>/dev/null | sed 's/^/  /' || true
 
-rescan: ## Trigger watcher container to send USR1 (if implemented) else restart it
-	@cid=$$(docker ps --filter name=$(PROJECT_NAME)-ingest-watcher -q); \
-	 if [ -n "$$cid" ]; then docker kill -s USR1 $$cid 2>/dev/null || docker restart $$cid; else echo "Watcher not running"; fi
+rescan: ## [DEPRECATED] Use 'simple' runner instead
+	@echo "$(R)DEPRECATED: rescan is no longer supported.$(Z)"
+	@echo "The simple runner automatically watches for new files."
 
 # Basic test hooks (placeholder) -------------------------------------------------
 test: ## Run tests (if/when added)

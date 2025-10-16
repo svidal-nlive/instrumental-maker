@@ -6,6 +6,7 @@ import sys
 import time
 import os
 import socket
+import signal
 from dataclasses import dataclass
 import re
 from pathlib import Path
@@ -49,6 +50,32 @@ def _is_audio(p: Path) -> bool:
 
 def _run(cmd: List[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+
+
+class TimeoutError(Exception):
+    """Raised when a subprocess times out."""
+    pass
+
+
+def _run_with_timeout(cmd: List[str], timeout_sec: Optional[int] = None, description: str = "") -> subprocess.CompletedProcess[str]:
+    """Run command with optional timeout. Returns CompletedProcess or raises TimeoutError."""
+    if description:
+        print(f"[simple] {description}")
+    
+    try:
+        proc = subprocess.run(
+            cmd, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            text=True, 
+            check=False,
+            timeout=timeout_sec
+        )
+        return proc
+    except subprocess.TimeoutExpired as e:
+        print(f"[simple] TIMEOUT after {timeout_sec}s: {' '.join(cmd[:3])}...")
+        raise TimeoutError(f"Command timed out after {timeout_sec}s: {description}") from e
+
 
 
 def _read_tags(p: Path) -> Dict[str, str]:
@@ -265,36 +292,97 @@ def _ffmpeg_extract(src: Path, dst: Path, start: float, dur: float, sr: int, thr
         raise RuntimeError(p.stderr or p.stdout)
 
 
-def _demucs_no_vocals(chunk_wav: Path, out_dir: Path, model: str, device: str = "cpu", jobs: int = 1) -> Path:
+def _demucs_no_vocals(chunk_wav: Path, out_dir: Path, model: str, device: str = "cpu", jobs: int = 1, 
+                      chunk_index: int = 0, total_chunks: int = 1, timeout_sec: int = 3600) -> Path:
+    """
+    Run Demucs on a chunk with timeout protection.
+    
+    Args:
+        chunk_wav: Input chunk file
+        out_dir: Output directory for Demucs
+        model: Demucs model name
+        device: cpu or cuda
+        jobs: Number of parallel jobs
+        chunk_index: Current chunk index for progress reporting
+        total_chunks: Total number of chunks for progress reporting
+        timeout_sec: Timeout in seconds (default 1 hour per chunk)
+    
+    Returns:
+        Path to the instrumental/no_vocals output file
+    
+    Raises:
+        TimeoutError: If processing exceeds timeout
+        RuntimeError: If Demucs fails or output not found
+    """
     ensure_dir(out_dir)
+    
+    # Progress indicator
+    progress = f"[{chunk_index + 1}/{total_chunks}]"
+    chunk_name = chunk_wav.name
+    
+    print(f"[simple] {progress} Processing chunk: {chunk_name}")
+    start_time = time.time()
+    
     # Use two-stems=vocals so we can take the accompaniment quickly
     cmd = [
-    "demucs", "-n", model,
+        "demucs", "-n", model,
         "--two-stems", "vocals",
-    "-o", str(out_dir),
-    "--device", device,
-    "--jobs", str(max(1, int(jobs))),
+        "-o", str(out_dir),
+        "--device", device,
+        "--jobs", str(max(1, int(jobs))),
         str(chunk_wav),
     ]
-    p = _run(cmd)
-    if p.returncode != 0:
-        raise RuntimeError(p.stderr or p.stdout)
+    
+    try:
+        p = _run_with_timeout(
+            cmd, 
+            timeout_sec=timeout_sec,
+            description=f"{progress} Running Demucs on {chunk_name} (timeout: {timeout_sec}s)"
+        )
+        
+        elapsed = time.time() - start_time
+        
+        if p.returncode != 0:
+            error_msg = (p.stderr or p.stdout or "Unknown error").strip()
+            print(f"[simple] {progress} FAILED after {elapsed:.1f}s: {error_msg}")
+            raise RuntimeError(f"Demucs failed on {chunk_name}: {error_msg}")
+        
+        print(f"[simple] {progress} Completed in {elapsed:.1f}s (~{elapsed/60:.1f} min)")
+        
+    except TimeoutError as e:
+        elapsed = time.time() - start_time
+        print(f"[simple] {progress} TIMEOUT after {elapsed:.1f}s on {chunk_name}")
+        raise
+    
     # Demucs output layout varies by version:
     # - out_dir/model/<base>/{vocals,other}.wav
     # - out_dir/model/<base>/{vocals,no_vocals}.wav
     # - sometimes directly under out_dir/<base>/*
     candidates = ("other.wav", "no_vocals.wav", "accompaniment.wav")
+    
     # First try within model dir
     model_dir = out_dir / model
     if model_dir.exists():
         for d in model_dir.rglob("*.wav"):
             if d.name in candidates:
+                print(f"[simple] {progress} Found output: {d.name}")
                 return d
+    
     # Then search anywhere under out_dir
     for name in candidates:
         for f in out_dir.rglob(name):
+            print(f"[simple] {progress} Found output: {f.name}")
             return f
-    raise RuntimeError("Demucs output not found")
+    
+    # Output not found - list what we actually got
+    print(f"[simple] {progress} ERROR: Demucs output not found in {out_dir}")
+    try:
+        contents = list(out_dir.rglob("*"))
+        print(f"[simple] {progress} Directory contents: {[str(p.relative_to(out_dir)) for p in contents[:10]]}")
+    except Exception:
+        pass
+    
+    raise RuntimeError(f"Demucs output not found for {chunk_name} in {out_dir}")
 
 
 def _concat_with_crossfades(parts: List[Path], out_wav: Path, crossfade_ms: int, threads: int):
@@ -384,6 +472,9 @@ def process_one(cfg: Config) -> bool:
 
     src = job.src
     print(f"[simple] processing: {src}")
+    print(f"[simple] ============================================")
+    
+    overall_start = time.time()
     work = Path(cfg.WORKING) / f"simple_{int(time.time())}"
     ensure_dir(work)
 
@@ -425,21 +516,93 @@ def process_one(cfg: Config) -> bool:
         return True
     plan = _chunk_plan_seconds(duration, chunk_sec=120, overlap_sec=cfg.CHUNK_OVERLAP_SEC)
     chunks: List[Path] = []
+    
+    print(f"[simple] Audio duration: {duration:.1f}s (~{duration/60:.1f} min)")
+    print(f"[simple] Creating {len(plan)} chunks with {cfg.CHUNK_OVERLAP_SEC}s overlap")
+    
     for i, (start, dur, _, _) in enumerate(plan):
         cpath = work / f"chunk_{i:03d}.wav"
+        print(f"[simple] [{i+1}/{len(plan)}] Extracting chunk at {start:.1f}s, duration {dur:.1f}s")
         _ffmpeg_extract(src, cpath, start, dur, cfg.SAMPLE_RATE, cfg.FFMPEG_THREADS)
         chunks.append(cpath)
 
     # 2) demucs for each chunk to get accompaniment (no vocals)
+    # Add retry logic and timeout for each chunk
     stems: List[Path] = []
+    max_retries = cfg.DEMUCS_MAX_RETRIES
+    # Use configured timeout, or calculate based on chunk duration
+    chunk_timeout_sec = cfg.DEMUCS_CHUNK_TIMEOUT_SEC if cfg.DEMUCS_CHUNK_TIMEOUT_SEC > 0 else max(600, int(120 * 5))
+    
+    print(f"[simple] Processing {len(chunks)} chunks with Demucs (timeout: {chunk_timeout_sec}s per chunk, max retries: {max_retries})")
+    
     for i, c in enumerate(chunks):
         out_dir = work / f"demucs_{i:03d}"
-        acc = _demucs_no_vocals(c, out_dir, cfg.MODEL, cfg.DEMUCS_DEVICE, cfg.DEMUCS_JOBS)
-        stems.append(acc)
+        retry_count = 0
+        success = False
+        last_error = None
+        
+        while retry_count <= max_retries and not success:
+            try:
+                if retry_count > 0:
+                    print(f"[simple] [{i+1}/{len(chunks)}] Retry {retry_count}/{max_retries} for {c.name}")
+                    # Clean up failed output directory before retry
+                    if out_dir.exists():
+                        try:
+                            shutil.rmtree(out_dir)
+                        except Exception as e:
+                            print(f"[simple] Warning: Could not clean {out_dir}: {e}")
+                
+                acc = _demucs_no_vocals(
+                    c, out_dir, cfg.MODEL, cfg.DEMUCS_DEVICE, cfg.DEMUCS_JOBS,
+                    chunk_index=i, total_chunks=len(chunks), timeout_sec=chunk_timeout_sec
+                )
+                stems.append(acc)
+                success = True
+                
+            except TimeoutError as e:
+                last_error = e
+                print(f"[simple] [{i+1}/{len(chunks)}] Chunk {c.name} timed out")
+                retry_count += 1
+                
+            except Exception as e:
+                last_error = e
+                print(f"[simple] [{i+1}/{len(chunks)}] Chunk {c.name} failed: {e}")
+                retry_count += 1
+        
+        if not success:
+            # All retries exhausted
+            error_msg = f"Failed to process chunk {i} ({c.name}) after {max_retries} retries: {last_error}"
+            print(f"[simple] FATAL: {error_msg}")
+            
+            # Log the failure
+            try:
+                log_dir = Path(cfg.LOG_DIR); ensure_dir(log_dir)
+                evt: Dict[str, Any] = {
+                    "event": "chunk_processing_failed",
+                    "source": str(src),
+                    "chunk_index": i,
+                    "chunk_path": str(c),
+                    "error": str(last_error),
+                    "retries": retry_count,
+                    "timestamp": int(time.time()),
+                }
+                (log_dir / "simple_runner.jsonl").open("a").write(json.dumps(evt) + "\n")
+            except Exception:
+                pass
+            
+            # Clean up and abort processing this file
+            try:
+                shutil.rmtree(work)
+            except Exception:
+                pass
+            
+            raise RuntimeError(error_msg)
 
     # 3) concat with crossfades
     final_wav = work / "instrumental.wav"
+    print(f"[simple] Merging {len(stems)} stems with crossfades ({cfg.CROSSFADE_MS}ms)")
     _concat_with_crossfades(stems, final_wav, cfg.CROSSFADE_MS, cfg.FFMPEG_THREADS)
+    print(f"[simple] Crossfade merge complete")
 
     # 4) encode to MP3, tag, embed cover, and move to /music-library/Artist/Album/Title.mp3
     comment = "[INST_DBO__model-htdemucs__sr-44100__bit-16]"
@@ -454,6 +617,10 @@ def process_one(cfg: Config) -> bool:
     title, artist, album = _compute_tags(src, job.album_root)
     # dst path
     dst = music / sanitize_filename(artist) / sanitize_filename(album) / f"{sanitize_filename(title)}.mp3"
+    
+    print(f"[simple] Encoding to MP3 ({cfg.MP3_ENCODING.upper()}) and tagging")
+    print(f"[simple] Output: {dst.relative_to(music) if dst.is_relative_to(music) else dst}")
+    
     _encode_and_tag(final_wav, dst, comment, cover, cfg.FFMPEG_THREADS, title, artist, album)
 
     # mark album active if this job is part of an album
@@ -489,6 +656,8 @@ def process_one(cfg: Config) -> bool:
         pass
 
     # Structured processing log
+    overall_elapsed = time.time() - overall_start
+    
     log: Dict[str, Any] = {
         "event": "processed",
         "source": str(src),
@@ -504,6 +673,7 @@ def process_one(cfg: Config) -> bool:
         "demucs_device": cfg.DEMUCS_DEVICE,
         "demucs_jobs": cfg.DEMUCS_JOBS,
         "duration_sec": duration,
+        "processing_time_sec": overall_elapsed,
         "timestamp": int(time.time()),
     }
     try:
@@ -512,7 +682,13 @@ def process_one(cfg: Config) -> bool:
         (log_dir / "simple_runner.jsonl").open("a").write(json.dumps(log) + "\n")
     except OSError:
         pass
-    print(f"[simple] done → {dst}")
+    
+    print(f"[simple] ============================================")
+    print(f"[simple] COMPLETE in {overall_elapsed:.1f}s ({overall_elapsed/60:.1f} min)")
+    print(f"[simple] Realtime ratio: {overall_elapsed/duration:.2f}x")
+    print(f"[simple] Output: {dst}")
+    print(f"[simple] ============================================")
+    
     return True
 
 

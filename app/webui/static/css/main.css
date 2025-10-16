@@ -1,0 +1,95 @@
+/* Custom styles for Instrumental Maker Web UI */
+
+/* Smooth transitions */
+* {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+}
+
+/* Navigation active state */
+.nav-link {
+    color: rgb(107 114 128);
+}
+
+.nav-link.active {
+    background: linear-gradient(to right, rgb(14 165 233), rgb(217 70 239));
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.dark .nav-link {
+    color: rgb(156 163 175);
+}
+
+.dark .nav-link.active {
+    background: linear-gradient(to right, rgb(14 165 233), rgb(217 70 239));
+    color: white;
+}
+
+.nav-link:hover:not(.active) {
+    background-color: rgb(243 244 246);
+}
+
+.dark .nav-link:hover:not(.active) {
+    background-color: rgb(55 65 81);
+}
+
+/* Stat cards animation */
+.stat-card {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgb(243 244 246);
+}
+
+.dark ::-webkit-scrollbar-track {
+    background: rgb(31 41 55);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgb(209 213 219);
+    border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+    background: rgb(75 85 99);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgb(156 163 175);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+    background: rgb(107 114 128);
+}
+
+/* Loading spinner */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.animate-spin {
+    animation: spin 1s linear infinite;
+}

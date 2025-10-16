@@ -113,6 +113,11 @@ class Config:
     # Demucs execution controls
     DEMUCS_DEVICE = _env_clean("DEMUCS_DEVICE", "cpu").lower()  # cpu|cuda
     DEMUCS_JOBS = int(_env_clean("DEMUCS_JOBS", "1") or 1)
+    # Timeout for Demucs processing per chunk (in seconds). 0 means no timeout.
+    # Default: 3600 (1 hour) to prevent infinite hangs on CPU processing
+    DEMUCS_CHUNK_TIMEOUT_SEC = int(_env_clean("DEMUCS_CHUNK_TIMEOUT_SEC", "3600") or 3600)
+    # Maximum retry attempts for failed chunks
+    DEMUCS_MAX_RETRIES = int(_env_clean("DEMUCS_MAX_RETRIES", "2") or 2)
 
     # Album processing behavior
     # When true, treat any top-level directory placed directly in INCOMING as an album job.
