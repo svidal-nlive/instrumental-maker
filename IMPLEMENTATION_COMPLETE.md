@@ -44,7 +44,7 @@ docker compose -f docker-compose.prebuilt.yml up -d
 - ✅ Works with localhost, IP addresses, or custom domains
 
 **Services & Ports**:
-- Web UI: `http://localhost:5000`
+- Web UI: `http://localhost:5050` (avoids Synology NAS port 5000/5001 conflict)
 - File Browser: `http://localhost:8095`
 - MinIO Console: `http://localhost:9001` (S3 API: `:9000`)
 - Deemix: `http://localhost:6595`
@@ -142,8 +142,13 @@ docker compose -f docker-compose.prebuilt.yml logs -f instrumental-simple
 docker compose -f docker-compose.prebuilt.yml -f docker-compose.local.yml up -d
 
 # Test access
-curl http://localhost:5000  # Web UI
-curl http://localhost:8095  # File Browser
+```bash
+# Test access
+# Access services
+open http://localhost:5050  # Web UI
+open http://localhost:8095  # File Browser
+```
+```
 ```
 
 ### Step 6: Verify Image Size Reduction

@@ -220,10 +220,19 @@ If you're testing on a machine without Traefik or want direct port access:
 docker compose -f docker-compose.prebuilt.yml -f docker-compose.local.yml up -d
 
 # Services will be accessible at:
-# - Web UI:        http://localhost:5000
+# - Web UI:        http://localhost:5050
 # - File Browser:  http://localhost:8095
 # - MinIO Console: http://localhost:9001 (S3 API at :9000)
 # - Deemix:        http://localhost:6595
+```
+
+You can also use your local IP address or a custom domain (add to `/etc/hosts`):
+
+```bash
+# Example with custom local domain
+echo "192.168.1.100 instrumental.local" | sudo tee -a /etc/hosts
+
+# Access at: http://instrumental.local:5050
 ```
 
 You can also use your local IP address or a custom domain (add to `/etc/hosts`):
