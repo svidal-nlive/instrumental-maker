@@ -3,7 +3,7 @@ import os
 import json
 from pathlib import Path
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, current_app
+from flask import Blueprint, jsonify, current_app, request
 from collections import defaultdict
 
 bp = Blueprint('dashboard', __name__, url_prefix='/api/dashboard')
@@ -153,6 +153,7 @@ def get_recent_jobs():
     log_dir = current_app.config['LOG_DIR']
     log_file = log_dir / 'simple_runner.jsonl'
     
+    
     events = parse_log_events(log_file, hours=168)
     
     # Get recent processed and failed items
@@ -172,4 +173,6 @@ def get_recent_jobs():
     # Sort by timestamp descending
     jobs.sort(key=lambda x: x['timestamp'], reverse=True)
     
+    
     return jsonify(jobs[:50])  # Return last 50 jobs
+

@@ -68,9 +68,10 @@ class ProcessingMonitor {
             if (currentJob && processor.running) {
                 const elapsed = this.formatDuration(currentJob.elapsed);
                 const progress = currentJob.progress_percent || 0;
+                const isStale = currentJob.is_stale || currentJob.idle_seconds > 600;
                 
                 jobContainer.innerHTML = `
-                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border border-gray-200 dark:border-gray-700">
+                    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-4 border ${isStale ? 'border-red-300 dark:border-red-700' : 'border-gray-200 dark:border-gray-700'}">
                         <div class="flex items-start justify-between mb-3">
                             <div class="flex-1">
                                 <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
@@ -81,7 +82,14 @@ class ProcessingMonitor {
                                     Elapsed: <span class="font-medium">${elapsed}</span>
                                 </p>
                             </div>
-                            ${!currentJob.is_active ? `
+                            ${isStale ? `
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                                    <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                    </svg>
+                                    Stale (${Math.floor(currentJob.idle_seconds / 60)}m)
+                                </span>
+                            ` : !currentJob.is_active ? `
                                 <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
                                     <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -149,6 +157,21 @@ class ProcessingMonitor {
                                 ${config.max_retries} retries
                             </span>
                         </div>
+                        
+                        ${isStale ? `
+                        <div class="mt-3 pt-3 border-t border-red-200 dark:border-red-800">
+                            <button onclick="processingMonitor.cleanupStaleJobs()" 
+                                    class="w-full inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                </svg>
+                                Clear Stale Job
+                            </button>
+                            <p class="text-xs text-red-600 dark:text-red-400 mt-2 text-center">
+                                This job appears to be stuck. Click to remove it.
+                            </p>
+                        </div>
+                        ` : ''}
                     </div>
                 `;
             } else {
@@ -212,6 +235,51 @@ class ProcessingMonitor {
                 </div>
             `;
         }).join('');
+    }
+
+    async cleanupStaleJobs() {
+        try {
+            const response = await fetch('/api/processing/cleanup-stale', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            const result = await response.json();
+            
+            if (result.success) {
+                const count = result.cleaned.length;
+                if (count > 0) {
+                    this.showNotification(`Cleaned up ${count} stale job(s)`, 'success');
+                } else {
+                    this.showNotification('No stale jobs to clean up', 'info');
+                }
+                // Refresh the display
+                this.update();
+            } else {
+                this.showNotification(`Failed to cleanup: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error cleaning up stale jobs:', error);
+            this.showNotification('Failed to cleanup stale jobs', 'error');
+        }
+    }
+
+    showNotification(message, type = 'info') {
+        // Simple notification - could be enhanced with a toast system
+        const colors = {
+            success: 'bg-green-500',
+            error: 'bg-red-500',
+            info: 'bg-blue-500'
+        };
+        
+        const notification = document.createElement('div');
+        notification.className = `fixed bottom-4 right-4 ${colors[type]} text-white px-4 py-2 rounded-lg shadow-lg z-50 transition-opacity duration-300`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
     }
 
     formatDuration(seconds) {

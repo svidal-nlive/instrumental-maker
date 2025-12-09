@@ -1,5 +1,50 @@
 // Instrumental Maker Web UI - Main JavaScript
 
+// Mobile Sidebar Toggle
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('active');
+    
+    // Prevent body scroll when sidebar is open
+    document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+}
+
+// Close sidebar when clicking a nav link on mobile
+function initMobileNav() {
+    const navLinks = document.querySelectorAll('.nav-link');
+    navLinks.forEach(link => {
+        link.addEventListener('click', () => {
+            if (window.innerWidth < 768) {
+                toggleSidebar();
+            }
+        });
+    });
+    
+    // Close sidebar on resize to desktop
+    window.addEventListener('resize', () => {
+        if (window.innerWidth >= 768) {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+    });
+    
+    // Close sidebar on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar.classList.contains('open')) {
+                toggleSidebar();
+            }
+        }
+    });
+}
+
 // Theme Management
 function initTheme() {
     const themeToggle = document.getElementById('theme-toggle');
@@ -126,21 +171,21 @@ async function loadRecentJobs() {
     }
 
     container.innerHTML = jobs.slice(0, 10).map(job => `
-        <div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
-            <div class="flex items-center space-x-4 flex-1">
-                <div class="w-10 h-10 rounded-lg ${job.status === 'completed' ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'} flex items-center justify-center">
+        <div class="flex items-center justify-between p-3 md:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors gap-3">
+            <div class="flex items-center space-x-3 md:space-x-4 flex-1 min-w-0">
+                <div class="w-8 h-8 md:w-10 md:h-10 rounded-lg shrink-0 ${job.status === 'completed' ? 'bg-green-100 dark:bg-green-900' : 'bg-red-100 dark:bg-red-900'} flex items-center justify-center">
                     ${job.status === 'completed' 
-                        ? '<svg class="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
-                        : '<svg class="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>'
+                        ? '<svg class="w-4 h-4 md:w-5 md:h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>'
+                        : '<svg class="w-4 h-4 md:w-5 md:h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>'
                     }
                 </div>
                 <div class="flex-1 min-w-0">
-                    <p class="font-medium text-gray-900 dark:text-gray-100 truncate">${job.filename}</p>
-                    <p class="text-sm text-gray-500 dark:text-gray-400 truncate">${job.artist} - ${job.album}</p>
+                    <p class="font-medium text-sm md:text-base text-gray-900 dark:text-gray-100 truncate">${job.filename}</p>
+                    <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400 truncate">${job.artist} - ${job.album}</p>
                 </div>
             </div>
-            <div class="text-right">
-                <p class="text-sm text-gray-500 dark:text-gray-400">${formatTimestamp(job.timestamp)}</p>
+            <div class="text-right shrink-0">
+                <p class="text-xs md:text-sm text-gray-500 dark:text-gray-400">${formatTimestamp(job.timestamp)}</p>
                 ${job.duration ? `<p class="text-xs text-gray-400">${Math.round(job.duration)}s</p>` : ''}
             </div>
         </div>
@@ -153,15 +198,15 @@ function updateProcessorStatus(processor) {
     if (processor.running) {
         statusEl.innerHTML = `
             <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span class="text-sm font-medium">Processing Active</span>
+            <span class="text-xs md:text-sm font-medium hidden sm:inline">Processing Active</span>
         `;
-        statusEl.className = 'flex items-center space-x-2 px-4 py-2 rounded-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300';
+        statusEl.className = 'flex items-center space-x-2 px-2 md:px-4 py-1.5 md:py-2 rounded-full bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300';
     } else {
         statusEl.innerHTML = `
             <div class="w-2 h-2 rounded-full bg-gray-400"></div>
-            <span class="text-sm font-medium">Idle</span>
+            <span class="text-xs md:text-sm font-medium hidden sm:inline">Idle</span>
         `;
-        statusEl.className = 'flex items-center space-x-2 px-4 py-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
+        statusEl.className = 'flex items-center space-x-2 px-2 md:px-4 py-1.5 md:py-2 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300';
     }
 }
 
@@ -266,6 +311,58 @@ async function loadLogs() {
     container.scrollTop = container.scrollHeight;
 }
 
+// Clear Processing History
+async function clearProcessingHistory() {
+    const confirmed = confirm('Are you sure you want to clear all processing history? This action cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch('/api/processing/clear-history', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            alert(result.message || 'Processing history cleared successfully');
+            // Reload recent jobs if available
+            if (typeof loadRecentJobs === 'function') {
+                loadRecentJobs();
+            }
+        } else {
+            alert('Failed to clear processing history');
+        }
+    } catch (error) {
+        console.error('Error clearing history:', error);
+        alert('Error clearing processing history: ' + error.message);
+    }
+}
+
+// Clear Processing Logs
+async function clearProcessingLogs() {
+    const confirmed = confirm('Are you sure you want to clear all processing logs? This action cannot be undone.');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch('/api/logs/clear', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            alert(result.message || 'Processing logs cleared successfully');
+            // Reload logs if available
+            if (typeof loadLogs === 'function') {
+                loadLogs();
+            }
+        } else {
+            alert('Failed to clear processing logs');
+        }
+    } catch (error) {
+        console.error('Error clearing logs:', error);
+        alert('Error clearing processing logs: ' + error.message);
+    }
+}
+
 // Upload handling
 function initUpload() {
     const dropZone = document.getElementById('drop-zone');
@@ -344,6 +441,7 @@ function formatFileSize(bytes) {
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     initNavigation();
+    initMobileNav();
     initUpload();
     updateDashboard();
 

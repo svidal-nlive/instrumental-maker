@@ -7,6 +7,32 @@ import time
 bp = Blueprint('logs', __name__, url_prefix='/api/logs')
 
 
+@bp.route('/clear', methods=['POST'])
+def clear_logs():
+    """Clear all processing logs."""
+    try:
+        log_dir = current_app.config['LOG_DIR']
+        log_file = log_dir / 'simple_runner.jsonl'
+        
+        if log_file.exists():
+            log_file.write_text('')
+            return jsonify({
+                'success': True,
+                'message': 'Processing logs cleared successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Log file not found'
+            }), 404
+    except Exception as e:
+        current_app.logger.error(f"Error clearing logs: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error clearing logs: {str(e)}'
+        }), 500
+
+
 @bp.route('/recent')
 def get_recent_logs():
     """Get recent log entries."""

@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0ea5e9;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#d946ef;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="url(#grad1)" opacity="0.1"/>
+  <circle cx="100" cy="100" r="90" fill="none" stroke="url(#grad1)" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Musical note waves representing audio separation -->
+  <g filter="url(#glow)">
+    <!-- Left wave bars -->
+    <rect x="45" y="75" width="8" height="50" fill="url(#grad1)" rx="4" opacity="0.9"/>
+    <rect x="60" y="55" width="8" height="90" fill="url(#grad1)" rx="4" opacity="0.8"/>
+    
+    <!-- Center accent circle (instrument/core) -->
+    <circle cx="100" cy="100" r="20" fill="url(#grad1)" opacity="0.95"/>
+    <circle cx="100" cy="100" r="14" fill="white" opacity="0.2"/>
+    
+    <!-- Right wave bars -->
+    <rect x="132" y="55" width="8" height="90" fill="url(#grad1)" rx="4" opacity="0.8"/>
+    <rect x="147" y="75" width="8" height="50" fill="url(#grad1)" rx="4" opacity="0.9"/>
+  </g>
+  
+  <!-- Musical note accent -->
+  <path d="M 100 65 Q 105 60 110 65 L 110 85 Q 105 90 100 85 Z" fill="url(#grad1)" opacity="0.7"/>
+</svg>

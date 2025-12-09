@@ -135,11 +135,53 @@ def get_current_job():
             'current_chunk': min(completed_chunks) if completed_chunks else (0 if total_chunks > 0 else None),
             'stage': stage,
             'idle_seconds': idle_time,
-            'is_active': idle_time < 120  # Consider active if modified within last 2 minutes
+            'is_active': idle_time < 120,  # Consider active if modified within last 2 minutes
+            'is_stale': idle_time > 600  # Mark as stale if idle for more than 10 minutes
         }
     except Exception as e:
         current_app.logger.error(f"Error getting current job: {e}")
         return None
+
+
+@bp.route('/cleanup-stale', methods=['POST'])
+def cleanup_stale_jobs():
+    """Manually clean up stale working directories."""
+    import shutil
+    working_dir = current_app.config['WORKING_DIR']
+    
+    cleaned = []
+    errors = []
+    
+    try:
+        for d in working_dir.iterdir():
+            if not d.is_dir() or not d.name.startswith('simple_'):
+                continue
+            
+            try:
+                # Check the last modification time
+                all_files = list(d.rglob('*'))
+                if not all_files:
+                    shutil.rmtree(d, ignore_errors=True)
+                    cleaned.append(d.name)
+                    continue
+                
+                latest_mtime = max(f.stat().st_mtime for f in all_files if f.is_file())
+                idle_time = time.time() - latest_mtime
+                
+                # Only clean up if idle for more than 10 minutes
+                if idle_time > 600:
+                    shutil.rmtree(d, ignore_errors=True)
+                    cleaned.append(d.name)
+            except Exception as e:
+                errors.append({'dir': d.name, 'error': str(e)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    
+    return jsonify({
+        'success': True,
+        'cleaned': cleaned,
+        'errors': errors
+    })
 
 
 @bp.route('/status')
@@ -226,3 +268,30 @@ def get_history():
         current_app.logger.error(f"Error reading history: {e}")
     
     return jsonify(history[::-1])  # Reverse to show most recent first
+
+
+@bp.route('/clear-history', methods=['POST'])
+def clear_history():
+    """Clear processing history."""
+    try:
+        log_dir = current_app.config['LOG_DIR']
+        log_file = log_dir / 'simple_runner.jsonl'
+        
+        if log_file.exists():
+            log_file.write_text('')
+            return jsonify({
+                'success': True,
+                'message': 'Processing history cleared successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Log file not found'
+            }), 404
+    except Exception as e:
+        current_app.logger.error(f"Error clearing history: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error clearing history: {str(e)}'
+        }), 500
+

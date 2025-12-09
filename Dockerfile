@@ -9,11 +9,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg libsndfile1 build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-# Install CPU-only Torch stack (pin for reproducibility) before large demucs deps
+# Install Torch stack (CPU or GPU based on TARGET_DEVICE arg)
 ARG TORCH_VERSION=2.3.1
 ARG TORCHAUDIO_VERSION=2.3.1
+ARG TARGET_DEVICE=cpu
+
 RUN --mount=type=cache,target=/root/.cache/pip \
-    PIP_NO_CACHE_DIR=0 pip install torch==${TORCH_VERSION} torchaudio==${TORCHAUDIO_VERSION} --index-url https://download.pytorch.org/whl/cpu
+    if [ "$TARGET_DEVICE" = "gpu" ]; then \
+        echo "Installing GPU (CUDA) Torch..." && \
+        PIP_NO_CACHE_DIR=0 pip install torch==${TORCH_VERSION} torchaudio==${TORCHAUDIO_VERSION} --index-url https://download.pytorch.org/whl/cu121; \
+    else \
+        echo "Installing CPU Torch..." && \
+        PIP_NO_CACHE_DIR=0 pip install torch==${TORCH_VERSION} torchaudio==${TORCHAUDIO_VERSION} --index-url https://download.pytorch.org/whl/cpu; \
+    fi
 
 # audio + io libs (excluding torch/torchaudio already installed)
 RUN --mount=type=cache,target=/root/.cache/pip \

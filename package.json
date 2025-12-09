@@ -1,0 +1,27 @@
+{
+  "name": "instrumental-maker",
+  "version": "1.0.0",
+  "description": "A streamlined, CPU‑only pipeline that turns input songs into instrumentals and organizes them into a clean music library.",
+  "main": "index.js",
+  "directories": {
+    "example": "examples",
+    "test": "tests"
+  },
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/svidal-nlive/instrumental-maker.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/svidal-nlive/instrumental-maker/issues"
+  },
+  "homepage": "https://github.com/svidal-nlive/instrumental-maker#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^24.10.2"
+  }
+}

@@ -763,6 +763,49 @@ def acquire_singleton_lock_for_tests(lock_path: Path) -> Optional[int]:
     return _acquire_singleton_lock(lock_path)
 
 
+def _cleanup_stale_working_dirs(working_dir: Path, max_age_seconds: int = 3600) -> int:
+    """
+    Clean up stale working directories on startup.
+    
+    This handles the case where the container is restarted mid-processing,
+    leaving behind orphaned working directories that cause the UI to show
+    lingering "processing" jobs.
+    
+    Returns the number of directories cleaned up.
+    """
+    if not working_dir.exists():
+        return 0
+    
+    cleaned = 0
+    now = time.time()
+    
+    for d in working_dir.iterdir():
+        if not d.is_dir() or not d.name.startswith('simple_'):
+            continue
+        
+        try:
+            # Check the last modification time of any file in the directory
+            all_files = list(d.rglob('*'))
+            if not all_files:
+                # Empty directory, remove it
+                shutil.rmtree(d, ignore_errors=True)
+                print(f"[simple] Cleaned up empty working dir: {d.name}")
+                cleaned += 1
+                continue
+            
+            latest_mtime = max(f.stat().st_mtime for f in all_files if f.is_file())
+            age = now - latest_mtime
+            
+            if age > max_age_seconds:
+                print(f"[simple] Cleaning up stale working dir (idle {int(age)}s): {d.name}")
+                shutil.rmtree(d, ignore_errors=True)
+                cleaned += 1
+        except (OSError, ValueError) as e:
+            print(f"[simple] Warning: could not check/clean {d.name}: {e}")
+    
+    return cleaned
+
+
 def main(argv: Optional[List[str]] = None):
     cfg = Config()
     # loop once by default; if --daemon, keep processing
@@ -779,6 +822,11 @@ def main(argv: Optional[List[str]] = None):
             if acquired_pid is None:
                 print("[simple] another instance appears to be running; exiting")
                 return
+            # Clean up any stale working directories from previous runs
+            working_dir = Path(os.environ.get("WORKING", cfg.WORKING))
+            stale_cleaned = _cleanup_stale_working_dirs(working_dir)
+            if stale_cleaned > 0:
+                print(f"[simple] Cleaned up {stale_cleaned} stale working director{'y' if stale_cleaned == 1 else 'ies'}")
         while True:
             progressed = process_one(cfg)
             if not daemon:
