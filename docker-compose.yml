@@ -4,6 +4,9 @@ services:
     container_name: instrumental-webui
     hostname: instrumental-webui
     command: ["python", "-u", "-m", "flask", "--app", "app.webui.app:create_app()", "run", "--host", "0.0.0.0", "--port", "5000"]
+    ports:
+      - "5000:5000"
+    mem_limit: 256m
     env_file: .env
     environment:
       - FLASK_ENV=production
@@ -26,29 +29,40 @@ services:
     networks:
       - internal
       - proxy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=proxy
-      - traefik.http.routers.instrumental-webui-nsystems.rule=Host(`instrumental.nsystems.live`)
-      - traefik.http.routers.instrumental-webui-nsystems.entrypoints=websecure
-      - traefik.http.routers.instrumental-webui-nsystems.tls=true
-      - traefik.http.routers.instrumental-webui-nsystems.priority=120
-      - traefik.http.routers.instrumental-webui-nsystems.middlewares=secure-headers@docker
-      - traefik.http.services.instrumental-webui.loadbalancer.server.port=5000
+    # Traefik labels commented out - using Cloudflare Tunnel instead
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.docker.network=proxy
+    #   - traefik.http.routers.instrumental-webui-nsystems.rule=Host(`instrumental.nsystems.live`)
+    #   - traefik.http.routers.instrumental-webui-nsystems.entrypoints=websecure
+    #   - traefik.http.routers.instrumental-webui-nsystems.tls=true
+    #   - traefik.http.routers.instrumental-webui-nsystems.priority=120
+    #   - traefik.http.routers.instrumental-webui-nsystems.middlewares=secure-headers@docker
+    #   - traefik.http.services.instrumental-webui.loadbalancer.server.port=5000
     restart: unless-stopped
 
   instrumental-simple:
-    build: .
+    build:
+      context: .
+      args:
+        TARGET_DEVICE: gpu
     container_name: instrumental-simple
     hostname: instrumental-simple
     # Use -m so that relative imports inside app package work
     command: ["python", "-u", "-m", "app.main", "simple", "--daemon"]
     env_file: .env
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     environment:
       - TORCH_HOME=/models/torch
       - XDG_CACHE_HOME=/models/xdg
       - DEMUCS_CACHE=/models/demucs
-      - DEMUCS_DEVICE=cpu
+      - DEMUCS_DEVICE=cuda
       - DEMUCS_JOBS=1
       - MUSIC_LIBRARY=/data/output
       # Encoding mode: v0 (default) or cbr320
@@ -72,6 +86,10 @@ services:
     image: quay.io/minio/minio:latest
     container_name: instrumental-minio
     command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    mem_limit: 256m
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
@@ -80,31 +98,33 @@ services:
     networks:
       - internal
       - proxy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=proxy
-      # MinIO S3 API
-      - traefik.http.routers.instrumental-minio-api-nsystems.rule=Host(`instrumental-s3.nsystems.live`)
-      - traefik.http.routers.instrumental-minio-api-nsystems.entrypoints=websecure
-      - traefik.http.routers.instrumental-minio-api-nsystems.tls=true
-      - traefik.http.routers.instrumental-minio-api-nsystems.priority=120
-      - traefik.http.routers.instrumental-minio-api-nsystems.middlewares=secure-headers@docker
-      - traefik.http.routers.instrumental-minio-api-nsystems.service=instrumental-minio-api
-      - traefik.http.services.instrumental-minio-api.loadbalancer.server.port=9000
-      # MinIO Console
-      - traefik.http.routers.instrumental-minio-console-nsystems.rule=Host(`instrumental-minio.nsystems.live`)
-      - traefik.http.routers.instrumental-minio-console-nsystems.entrypoints=websecure
-      - traefik.http.routers.instrumental-minio-console-nsystems.tls=true
-      - traefik.http.routers.instrumental-minio-console-nsystems.priority=120
-      - traefik.http.routers.instrumental-minio-console-nsystems.middlewares=secure-headers@docker
-      - traefik.http.routers.instrumental-minio-console-nsystems.service=instrumental-minio-console
-      - traefik.http.services.instrumental-minio-console.loadbalancer.server.port=9001
+    # Traefik labels commented out - using Cloudflare Tunnel instead
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.docker.network=proxy
+    #   # MinIO S3 API
+    #   - traefik.http.routers.instrumental-minio-api-nsystems.rule=Host(`instrumental-s3.nsystems.live`)
+    #   - traefik.http.routers.instrumental-minio-api-nsystems.entrypoints=websecure
+    #   - traefik.http.routers.instrumental-minio-api-nsystems.tls=true
+    #   - traefik.http.routers.instrumental-minio-api-nsystems.priority=120
+    #   - traefik.http.routers.instrumental-minio-api-nsystems.middlewares=secure-headers@docker
+    #   - traefik.http.routers.instrumental-minio-api-nsystems.service=instrumental-minio-api
+    #   - traefik.http.services.instrumental-minio-api.loadbalancer.server.port=9000
+    #   # MinIO Console
+    #   - traefik.http.routers.instrumental-minio-console-nsystems.rule=Host(`instrumental-minio.nsystems.live`)
+    #   - traefik.http.routers.instrumental-minio-console-nsystems.entrypoints=websecure
+    #   - traefik.http.routers.instrumental-minio-console-nsystems.tls=true
+    #   - traefik.http.routers.instrumental-minio-console-nsystems.priority=120
+    #   - traefik.http.routers.instrumental-minio-console-nsystems.middlewares=secure-headers@docker
+    #   - traefik.http.routers.instrumental-minio-console-nsystems.service=instrumental-minio-console
+    #   - traefik.http.services.instrumental-minio-console.loadbalancer.server.port=9001
     restart: unless-stopped
 
   minio-mirror:
     build: .
     container_name: instrumental-minio-mirror
     command: ["python", "-u", "-m", "app.main", "minio-mirror"]
+    mem_limit: 128m
     env_file: .env
     depends_on:
       - instrumental-simple
@@ -122,6 +142,9 @@ services:
     container_name: instrumental-filebrowser
     # Run as root so it can manage root-owned files created by other containers
     user: "0:0"
+    ports:
+      - "8080:80"
+    mem_limit: 64m
     volumes:
       - ./pipeline-data:/srv
       - ./test-data:/srv/test-data
@@ -129,21 +152,25 @@ services:
       - ./pipeline-data/filebrowser/config:/config
     networks:
       - proxy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=proxy
-      - traefik.http.routers.instrumental-files-nsystems.rule=Host(`instrumental-files.nsystems.live`)
-      - traefik.http.routers.instrumental-files-nsystems.entrypoints=websecure
-      - traefik.http.routers.instrumental-files-nsystems.tls=true
-      - traefik.http.routers.instrumental-files-nsystems.priority=120
-      - traefik.http.routers.instrumental-files-nsystems.middlewares=secure-headers@docker
-      - traefik.http.services.instrumental-files.loadbalancer.server.port=80
+    # Traefik labels commented out - using Cloudflare Tunnel instead
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.docker.network=proxy
+    #   - traefik.http.routers.instrumental-files-nsystems.rule=Host(`instrumental-files.nsystems.live`)
+    #   - traefik.http.routers.instrumental-files-nsystems.entrypoints=websecure
+    #   - traefik.http.routers.instrumental-files-nsystems.tls=true
+    #   - traefik.http.routers.instrumental-files-nsystems.priority=120
+    #   - traefik.http.routers.instrumental-files-nsystems.middlewares=secure-headers@docker
+    #   - traefik.http.services.instrumental-files.loadbalancer.server.port=80
     restart: unless-stopped
 
   deemix:
     image: registry.gitlab.com/bockiii/deemix-docker:latest
     container_name: instrumental-deemix
     restart: unless-stopped
+    mem_limit: 256m
+    ports:
+      - "6595:6595"
     environment:
       - PUID=0
       - PGID=0
@@ -156,17 +183,46 @@ services:
       - ./pipeline-data/incoming:/downloads
     networks:
       - proxy
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=proxy
-      - traefik.http.routers.instrumental-deemix-nsystems.rule=Host(`instrumental-deemix.nsystems.live`)
-      - traefik.http.routers.instrumental-deemix-nsystems.entrypoints=websecure
-      - traefik.http.routers.instrumental-deemix-nsystems.tls=true
-      - traefik.http.routers.instrumental-deemix-nsystems.priority=120
-      - traefik.http.routers.instrumental-deemix-nsystems.middlewares=secure-headers@docker
-      - traefik.http.services.instrumental-deemix.loadbalancer.server.port=6595
+    # Traefik labels commented out - using Cloudflare Tunnel instead
+    # labels:
+    #   - traefik.enable=true
+    #   - traefik.docker.network=proxy
+    #   - traefik.http.routers.instrumental-deemix-nsystems.rule=Host(`instrumental-deemix.nsystems.live`)
+    #   - traefik.http.routers.instrumental-deemix-nsystems.entrypoints=websecure
+    #   - traefik.http.routers.instrumental-deemix-nsystems.tls=true
+    #   - traefik.http.routers.instrumental-deemix-nsystems.priority=120
+    #   - traefik.http.routers.instrumental-deemix-nsystems.middlewares=secure-headers@docker
+    #   - traefik.http.services.instrumental-deemix.loadbalancer.server.port=6595
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: instrumental-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token eyJhIjoiMmZhODcwNWRiOWFhYzU5ZmJhMmIyYmQyNTg1Y2UyNDkiLCJ0IjoiMDQ3NGFiNzItY2FkYS00MmZkLTk0YTctMThkZjUxNDc2MzVmIiwicyI6IlpqWmpOemd3WkRFdFpXVXlaQzAwTWpZMkxUZ3hZVEl0TUdReU5tSm1OR0kwWVdZMCJ9
+    networks:
+      - proxy
+      - internal
+    depends_on:
+      - webui
+      - minio
+      - filebrowser
+      - deemix
+
+  nas-sync:
+    build:
+      context: ./sync-scripts
+    container_name: instrumental-nas-sync
+    restart: unless-stopped
+    volumes:
+      - ./pipeline-data/output:/data/output  # Read/write to delete after sync
+      - ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+      - ~/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+    networks:
+      - internal
+    depends_on:
+      - instrumental-simple
 
 networks:
   internal:
   proxy:
-    external: true
+    external: false
