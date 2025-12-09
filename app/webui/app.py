@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 import mimetypes
 
 # Import routes
-from app.webui.routes import dashboard, files, processing, logs
+from app.webui.routes import dashboard, files, processing, logs, storage
 
 def create_app():
     """Create and configure the Flask application."""
@@ -30,6 +30,7 @@ def create_app():
     app.register_blueprint(files.bp)
     app.register_blueprint(processing.bp)
     app.register_blueprint(logs.bp)
+    app.register_blueprint(storage.bp)
     
     @app.route('/')
     def index():

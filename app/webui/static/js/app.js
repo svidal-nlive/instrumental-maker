@@ -228,6 +228,9 @@ async function loadPageData(pageName) {
         case 'logs':
             loadLogs();
             break;
+        case 'storage':
+            loadStorageStats();
+            break;
     }
 }
 
@@ -360,6 +363,122 @@ async function clearProcessingLogs() {
     } catch (error) {
         console.error('Error clearing logs:', error);
         alert('Error clearing processing logs: ' + error.message);
+    }
+}
+
+// Storage Management Functions
+async function loadStorageStats() {
+    try {
+        const stats = await fetchAPI('/storage/stats');
+        if (!stats) {
+            document.getElementById('disk-usage-container').innerHTML = '<p class="text-red-500">Failed to load storage stats</p>';
+            return;
+        }
+
+        // Display disk usage
+        const diskHtml = `
+            <div class="space-y-3">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-sm font-medium">Disk Usage</span>
+                        <span class="text-sm font-bold text-primary-600 dark:text-primary-400">${stats.disk.percent_used}%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3 overflow-hidden">
+                        <div class="bg-gradient-to-r from-primary-500 to-accent-500 h-full transition-all" style="width: ${stats.disk.percent_used}%"></div>
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        ${stats.disk.used_human} / ${stats.disk.total_human}
+                    </div>
+                </div>
+                <div class="text-xs text-gray-600 dark:text-gray-300 space-y-1 pt-2 border-t border-gray-200 dark:border-gray-700">
+                    <p><strong>Available:</strong> ${stats.disk.available_human}</p>
+                    <p><strong>Pipeline Usage:</strong> ${stats.pipeline.total_human} (${stats.pipeline.percent_of_disk}%)</p>
+                </div>
+            </div>
+        `;
+        document.getElementById('disk-usage-container').innerHTML = diskHtml;
+
+        // Display directory breakdown
+        const dirs = stats.directories;
+        const dirHtml = `
+            <div class="space-y-2">
+                ${[
+                    { name: 'Incoming Queue', key: 'incoming', color: 'blue' },
+                    { name: 'Output Library', key: 'output', color: 'green' },
+                    { name: 'Working (Processing)', key: 'working', color: 'yellow' },
+                    { name: 'Archive', key: 'archive', color: 'purple' },
+                    { name: 'Quarantine', key: 'quarantine', color: 'red' }
+                ].map(dir => {
+                    const data = dirs[dir.key];
+                    const colorClass = {
+                        'blue': 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300',
+                        'green': 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300',
+                        'yellow': 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300',
+                        'purple': 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300',
+                        'red': 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300'
+                    }[dir.color];
+                    return `
+                        <div class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                            <div class="flex-1">
+                                <p class="font-medium text-sm">${dir.name}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">${data.file_count} files</p>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-semibold text-sm">${data.size_human}</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+        document.getElementById('directory-breakdown').innerHTML = dirHtml;
+    } catch (error) {
+        console.error('Error loading storage stats:', error);
+        document.getElementById('disk-usage-container').innerHTML = '<p class="text-red-500">Error loading storage stats</p>';
+    }
+}
+
+async function cleanupWorkingDirectory() {
+    const confirmed = confirm('Are you sure you want to clean up the working directory? This will remove all temporary processing files.');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch('/api/storage/cleanup', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            alert(`${result.message}\nCleaned: ${result.cleaned_human}`);
+            loadStorageStats(); // Refresh stats
+        } else {
+            alert('Failed to cleanup working directory');
+        }
+    } catch (error) {
+        console.error('Error cleaning up working directory:', error);
+        alert('Error cleaning up: ' + error.message);
+    }
+}
+
+async function emptyQuarantine() {
+    const confirmed = confirm('Are you sure you want to empty the quarantine directory? This will permanently delete all quarantined files.');
+    if (!confirmed) return;
+
+    try {
+        const response = await fetch('/api/storage/empty-quarantine', {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            alert(`${result.message}\nRemoved: ${result.removed_human}`);
+            loadStorageStats(); // Refresh stats
+        } else {
+            alert('Failed to empty quarantine');
+        }
+    } catch (error) {
+        console.error('Error emptying quarantine:', error);
+        alert('Error emptying quarantine: ' + error.message);
     }
 }
 

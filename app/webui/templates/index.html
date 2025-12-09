@@ -105,6 +105,12 @@
                     </svg>
                     <span class="font-medium">Logs</span>
                 </a>
+                <a href="#" data-page="storage" class="nav-link flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 7h14M5 7a2 2 0 110-4h14a2 2 0 110 4M5 7v10a2 2 0 002 2h10a2 2 0 002-2V7m0 0a2 2 0 100-4H5a2 2 0 100 4"></path>
+                    </svg>
+                    <span class="font-medium">Storage</span>
+                </a>
             </nav>
 
             <!-- Theme Toggle & Settings -->
@@ -388,6 +394,66 @@
                         </div>
                         <div id="logs-content" class="font-mono text-xs space-y-1 max-h-[60vh] md:max-h-96 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-3 md:p-4 rounded-lg">
                             Loading logs...
+                        </div>
+                    </div>
+                </div>
+
+                <div id="page-storage" class="page-content hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <!-- Disk Usage Card -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                            <h3 class="text-base md:text-lg font-bold mb-4 flex items-center">
+                                <svg class="w-5 h-5 mr-2 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                </svg>
+                                Disk Usage
+                            </h3>
+                            <div id="disk-usage-container" class="space-y-3">
+                                <div class="flex items-center justify-center py-6">
+                                    <svg class="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions Card -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                            <h3 class="text-base md:text-lg font-bold mb-4">Quick Actions</h3>
+                            <div class="space-y-2">
+                                <button onclick="cleanupWorkingDirectory()" class="w-full px-4 py-2 bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 rounded-lg hover:bg-orange-200 dark:hover:bg-orange-800 transition-colors flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                    Clean Working Dir
+                                </button>
+                                <button onclick="emptyQuarantine()" class="w-full px-4 py-2 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-lg hover:bg-red-200 dark:hover:bg-red-800 transition-colors flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                    Empty Quarantine
+                                </button>
+                                <button onclick="loadStorageStats()" class="w-full px-4 py-2 bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-lg hover:bg-primary-200 dark:hover:bg-primary-800 transition-colors flex items-center justify-center gap-2">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                    Refresh Stats
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Directory Breakdown -->
+                    <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                        <h3 class="text-base md:text-lg font-bold mb-4">Directory Breakdown</h3>
+                        <div id="directory-breakdown" class="space-y-3">
+                            <div class="flex items-center justify-center py-6">
+                                <svg class="animate-spin h-6 w-6" fill="none" viewBox="0 0 24 24">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            </div>
                         </div>
                     </div>
                 </div>
