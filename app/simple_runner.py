@@ -436,6 +436,89 @@ def _demucs_no_vocals(chunk_wav: Path, out_dir: Path, model: str, device: str = 
     raise RuntimeError(f"Demucs output not found for {chunk_name} in {out_dir}")
 
 
+def _demucs_full_stems(chunk_wav: Path, out_dir: Path, model: str, device: str = "cpu", jobs: int = 1,
+                       chunk_index: int = 0, total_chunks: int = 1, timeout_sec: int = 3600) -> Path:
+    """
+    Run Demucs on a chunk to extract all stems (vocals, drums, bass, other).
+    Returns the demucs output directory containing all stems.
+    
+    Args:
+        chunk_wav: Input chunk file
+        out_dir: Output directory for Demucs
+        model: Demucs model name
+        device: cpu or cuda
+        jobs: Number of parallel jobs
+        chunk_index: Current chunk index for progress reporting
+        total_chunks: Total number of chunks
+        timeout_sec: Timeout in seconds
+    
+    Returns:
+        Path to the demucs output directory containing all stems
+    
+    Raises:
+        TimeoutError: If processing exceeds timeout
+        RuntimeError: If Demucs fails
+    """
+    ensure_dir(out_dir)
+    
+    progress = f"[{chunk_index + 1}/{total_chunks}]"
+    chunk_name = chunk_wav.name
+    
+    print(f"[simple] {progress} Extracting stems from: {chunk_name}")
+    start_time = time.time()
+    
+    cmd = [
+        "demucs", "-n", model,
+        "-o", str(out_dir),
+        "--device", device,
+        "--jobs", str(max(1, int(jobs))),
+        str(chunk_wav),
+    ]
+    
+    try:
+        p = _run_with_timeout(
+            cmd,
+            timeout_sec=timeout_sec,
+            description=f"{progress} Extracting stems from {chunk_name} (timeout: {timeout_sec}s)"
+        )
+        
+        elapsed = time.time() - start_time
+        
+        if p.returncode != 0:
+            error_msg = (p.stderr or p.stdout or "Unknown error").strip()
+            print(f"[simple] {progress} FAILED after {elapsed:.1f}s: {error_msg}")
+            raise RuntimeError(f"Demucs failed on {chunk_name}: {error_msg}")
+        
+        print(f"[simple] {progress} Completed in {elapsed:.1f}s (~{elapsed/60:.1f} min)")
+        
+    except TimeoutError as e:
+        elapsed = time.time() - start_time
+        print(f"[simple] {progress} TIMEOUT after {elapsed:.1f}s on {chunk_name}")
+        raise
+    
+    # Find the demucs output directory (contains vocals.wav, drums.wav, etc.)
+    model_dir = out_dir / model
+    if model_dir.exists():
+        # Look for directories under model dir
+        for d in model_dir.iterdir():
+            if d.is_dir():
+                # Check if it has stem files
+                stems = list(d.glob("*.wav"))
+                if stems:
+                    print(f"[simple] {progress} Found {len(stems)} stems in {d.name}")
+                    return d
+    
+    # Direct search for stem files
+    stem_files = list(out_dir.rglob("*.wav"))
+    if stem_files:
+        # Return the common parent directory
+        print(f"[simple] {progress} Found {len(stem_files)} stem files")
+        return out_dir
+    
+    raise RuntimeError(f"No stem files found in demucs output for {chunk_name}")
+
+
+
 def _concat_with_crossfades(parts: List[Path], out_wav: Path, crossfade_ms: int, threads: int):
     ensure_dir(out_wav.parent)
     if len(parts) == 1:
@@ -860,25 +943,29 @@ def _process_queue_audio_job(bundle, working_job: Path, cfg: Config) -> bool:
     """
     Process a queue-based audio job (YouTube audio or other sources).
     Processes audio through instrumental extraction and variant generation.
+    Generates variants: instrumental, no_drums (optional), drums_only (optional)
     """
+    # Import variant generator here to avoid circular imports
+    from .variant_generator import VariantGenerator, StemMixer
+    
     if not bundle.audio_path or not bundle.audio_path.exists():
         print(f"[simple-queue] Audio file not found: {bundle.audio_path}")
         return False
     
     output_dir = Path(cfg.OUTPUTS_DIR) / bundle.job_id
     output_dir.mkdir(parents=True, exist_ok=True)
+    files_audio_dir = output_dir / "files" / "audio"
+    files_audio_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"[simple-queue] Processing {bundle.source_type} audio: {bundle.title}")
+    print(f"[simple-queue] Variant generation: no_drums={cfg.GENERATE_NO_DRUMS_VARIANT}, drums_only={cfg.GENERATE_DRUMS_ONLY_VARIANT}")
     
-    # For now, use legacy instrumental generation
-    # TODO: Extend to support variants and stem preservation
     try:
         # Run the same processing pipeline as legacy process_one
         # but on the audio file from the bundle
         src = bundle.audio_path
         duration = _ffprobe_duration_sec(src)
         plan = _chunk_plan_seconds(duration, chunk_sec=120, overlap_sec=cfg.CHUNK_OVERLAP_SEC)
-        chunks: List[Path] = []
         
         work = Path(cfg.WORKING) / f"queue_{bundle.job_id}"
         ensure_dir(work)
@@ -887,85 +974,207 @@ def _process_queue_audio_job(bundle, working_job: Path, cfg: Config) -> bool:
         print(f"[simple-queue] Creating {len(plan)} chunks")
         
         # Extract chunks
+        chunks: List[Path] = []
         for i, (start, dur, _, _) in enumerate(plan):
             cpath = work / f"chunk_{i:03d}.wav"
             _ffmpeg_extract(src, cpath, start, dur, cfg.SAMPLE_RATE, cfg.FFMPEG_THREADS)
             chunks.append(cpath)
         
-        # Process with demucs
-        stems: List[Path] = []
+        # Decide if we need full stems (for variants) or just instrumental
+        need_full_stems = cfg.GENERATE_NO_DRUMS_VARIANT or cfg.GENERATE_DRUMS_ONLY_VARIANT or cfg.PRESERVE_STEMS
         max_retries = cfg.DEMUCS_MAX_RETRIES
         chunk_timeout_sec = cfg.DEMUCS_CHUNK_TIMEOUT_SEC if cfg.DEMUCS_CHUNK_TIMEOUT_SEC > 0 else max(600, int(120 * 5))
         
-        for i, c in enumerate(chunks):
-            out_dir = work / f"demucs_{i:03d}"
-            retry_count = 0
-            success = False
-            last_error = None
+        if need_full_stems:
+            print(f"[simple-queue] Using full stem extraction for variant generation")
+            # Extract all stems and store them per chunk
+            all_stems = {}  # chunk_index -> {stem_name -> Path}
             
-            while retry_count <= max_retries and not success:
-                try:
-                    if retry_count > 0:
-                        if out_dir.exists():
-                            try:
-                                shutil.rmtree(out_dir)
-                            except Exception:
-                                pass
+            for i, c in enumerate(chunks):
+                out_dir = work / f"demucs_stems_{i:03d}"
+                retry_count = 0
+                success = False
+                last_error = None
+                
+                while retry_count <= max_retries and not success:
+                    try:
+                        if retry_count > 0:
+                            if out_dir.exists():
+                                try:
+                                    shutil.rmtree(out_dir)
+                                except Exception:
+                                    pass
+                        
+                        stems_dir = _demucs_full_stems(
+                            c, out_dir, cfg.MODEL, cfg.DEMUCS_DEVICE, cfg.DEMUCS_JOBS,
+                            chunk_index=i, total_chunks=len(chunks), timeout_sec=chunk_timeout_sec
+                        )
+                        all_stems[i] = StemMixer.get_available_stems(stems_dir)
+                        success = True
                     
-                    acc = _demucs_no_vocals(
-                        c, out_dir, cfg.MODEL, cfg.DEMUCS_DEVICE, cfg.DEMUCS_JOBS,
-                        chunk_index=i, total_chunks=len(chunks), timeout_sec=chunk_timeout_sec
-                    )
-                    stems.append(acc)
-                    success = True
+                    except TimeoutError as e:
+                        last_error = e
+                        print(f"[simple-queue] Chunk {i} timed out (retry {retry_count})")
+                        retry_count += 1
+                    
+                    except Exception as e:
+                        last_error = e
+                        print(f"[simple-queue] Chunk {i} failed: {e} (retry {retry_count})")
+                        retry_count += 1
                 
-                except TimeoutError as e:
-                    last_error = e
-                    print(f"[simple-queue] Chunk {i} timed out (retry {retry_count})")
-                    retry_count += 1
-                
-                except Exception as e:
-                    last_error = e
-                    print(f"[simple-queue] Chunk {i} failed: {e} (retry {retry_count})")
-                    retry_count += 1
+                if not success:
+                    raise RuntimeError(f"Failed to extract stems from chunk {i}: {last_error}")
             
-            if not success:
-                raise RuntimeError(f"Failed to process chunk {i}: {last_error}")
+            # Generate variant files from merged stems
+            variants_generated = {}  # variant_name -> output_path
+            
+            # 1. Generate instrumental (drums + bass + other)
+            instrumental_wav = work / "instrumental.wav"
+            instrumental_stems = {}
+            for chunk_idx, stems_dict in all_stems.items():
+                for stem_name, stem_path in stems_dict.items():
+                    if stem_name not in instrumental_stems:
+                        instrumental_stems[stem_name] = []
+                    instrumental_stems[stem_name].append(stem_path)
+            
+            # Merge chunks for each stem, then mix for instrumental
+            if all(name in instrumental_stems for name in ["drums", "bass", "other"]):
+                print(f"[simple-queue] Generating instrumental variant")
+                instrumental_merged_stems = {}
+                for stem_name in ["drums", "bass", "other"]:
+                    merged_stem = work / f"{stem_name}_merged.wav"
+                    _concat_with_crossfades(
+                        instrumental_stems[stem_name], merged_stem,
+                        cfg.CROSSFADE_MS, cfg.FFMPEG_THREADS
+                    )
+                    instrumental_merged_stems[stem_name] = merged_stem
+                
+                VariantGenerator.generate_instrumental(
+                    instrumental_merged_stems, instrumental_wav, cfg.FFMPEG_THREADS
+                )
+                variants_generated["instrumental"] = instrumental_wav
+            else:
+                raise RuntimeError("Cannot generate instrumental: missing required stems")
+            
+            # 2. Generate no_drums variant (if enabled)
+            if cfg.GENERATE_NO_DRUMS_VARIANT:
+                if all(name in instrumental_stems for name in ["vocals", "bass", "other"]):
+                    print(f"[simple-queue] Generating no_drums variant")
+                    no_drums_wav = work / "no_drums.wav"
+                    no_drums_merged_stems = {}
+                    for stem_name in ["vocals", "bass", "other"]:
+                        merged_stem = work / f"{stem_name}_merged_nodrum.wav"
+                        _concat_with_crossfades(
+                            instrumental_stems[stem_name], merged_stem,
+                            cfg.CROSSFADE_MS, cfg.FFMPEG_THREADS
+                        )
+                        no_drums_merged_stems[stem_name] = merged_stem
+                    
+                    if VariantGenerator.generate_no_drums(
+                        no_drums_merged_stems, no_drums_wav, cfg.FFMPEG_THREADS
+                    ):
+                        variants_generated["no_drums"] = no_drums_wav
+                else:
+                    print(f"[simple-queue] Cannot generate no_drums: missing vocals/bass/other stems")
+            
+            # 3. Generate drums_only variant (if enabled)
+            if cfg.GENERATE_DRUMS_ONLY_VARIANT:
+                if "drums" in instrumental_stems:
+                    print(f"[simple-queue] Generating drums_only variant")
+                    drums_wav = work / "drums_only.wav"
+                    _concat_with_crossfades(
+                        instrumental_stems["drums"], drums_wav,
+                        cfg.CROSSFADE_MS, cfg.FFMPEG_THREADS
+                    )
+                    variants_generated["drums_only"] = drums_wav
         
-        # Merge stems
-        final_wav = work / "instrumental.wav"
-        _concat_with_crossfades(stems, final_wav, cfg.CROSSFADE_MS, cfg.FFMPEG_THREADS)
+        else:
+            # Fast path: just extract instrumental (no variants)
+            print(f"[simple-queue] Using fast path (instrumental only, no variants)")
+            instrumental_stems: List[Path] = []
+            
+            for i, c in enumerate(chunks):
+                out_dir = work / f"demucs_{i:03d}"
+                retry_count = 0
+                success = False
+                last_error = None
+                
+                while retry_count <= max_retries and not success:
+                    try:
+                        if retry_count > 0:
+                            if out_dir.exists():
+                                try:
+                                    shutil.rmtree(out_dir)
+                                except Exception:
+                                    pass
+                        
+                        acc = _demucs_no_vocals(
+                            c, out_dir, cfg.MODEL, cfg.DEMUCS_DEVICE, cfg.DEMUCS_JOBS,
+                            chunk_index=i, total_chunks=len(chunks), timeout_sec=chunk_timeout_sec
+                        )
+                        instrumental_stems.append(acc)
+                        success = True
+                    
+                    except TimeoutError as e:
+                        last_error = e
+                        print(f"[simple-queue] Chunk {i} timed out (retry {retry_count})")
+                        retry_count += 1
+                    
+                    except Exception as e:
+                        last_error = e
+                        print(f"[simple-queue] Chunk {i} failed: {e} (retry {retry_count})")
+                        retry_count += 1
+                
+                if not success:
+                    raise RuntimeError(f"Failed to process chunk {i}: {last_error}")
+            
+            # Merge stems
+            instrumental_wav = work / "instrumental.wav"
+            _concat_with_crossfades(instrumental_stems, instrumental_wav, cfg.CROSSFADE_MS, cfg.FFMPEG_THREADS)
+            variants_generated = {"instrumental": instrumental_wav}
         
-        # Encode to audio file
-        files_audio_dir = output_dir / "files" / "audio"
-        files_audio_dir.mkdir(parents=True, exist_ok=True)
-        
-        filename = f"{sanitize_filename(bundle.artist)} - {sanitize_filename(bundle.title)}.m4a"
-        output_audio = files_audio_dir / filename
-        
-        # Tag and encode
-        _encode_and_tag(
-            final_wav, output_audio,
-            "[INST_QUEUE__model-htdemucs__sr-44100__bit-16]",
-            bundle.cover_path, cfg.FFMPEG_THREADS,
-            bundle.title, bundle.artist, bundle.album
-        )
-        
-        print(f"[simple-queue] Generated instrumental: {filename}")
-        
-        # Generate manifest with artifact
-        artifacts = [
-            {
-                "variant": "instrumental",
-                "label": "Instrumental",
+        # Encode variants to audio files
+        artifacts = []
+        for variant_name, wav_path in variants_generated.items():
+            if not wav_path.exists():
+                print(f"[simple-queue] Warning: {variant_name} file not found: {wav_path}")
+                continue
+            
+            # Build filename with variant suffix
+            if variant_name == "instrumental":
+                variant_label = "Instrumental"
+                filename = f"{sanitize_filename(bundle.artist)} - {sanitize_filename(bundle.title)}.m4a"
+            elif variant_name == "no_drums":
+                variant_label = "Instrumental (no drums)"
+                filename = f"{sanitize_filename(bundle.artist)} - {sanitize_filename(bundle.title)} (no drums).m4a"
+            elif variant_name == "drums_only":
+                variant_label = "Drums only"
+                filename = f"{sanitize_filename(bundle.artist)} - {sanitize_filename(bundle.title)} (drums only).m4a"
+            else:
+                variant_label = variant_name
+                filename = f"{sanitize_filename(bundle.artist)} - {sanitize_filename(bundle.title)} ({variant_name}).m4a"
+            
+            output_audio = files_audio_dir / filename
+            
+            # Tag and encode
+            _encode_and_tag(
+                wav_path, output_audio,
+                "[INST_QUEUE__model-htdemucs__sr-44100__bit-16]",
+                bundle.cover_path, cfg.FFMPEG_THREADS,
+                bundle.title, bundle.artist, bundle.album
+            )
+            
+            print(f"[simple-queue] Generated {variant_label}: {filename}")
+            
+            artifacts.append({
+                "variant": variant_name,
+                "label": variant_label,
                 "filename": filename,
                 "codec": "aac",
                 "duration_sec": duration,
-            }
-        ]
+            })
         
-        # TODO: Add variant support (no_drums, drums_only) here
-        
+        # Generate manifest with all artifacts
         manifest = ManifestGenerator.generate_for_job(
             job_id=bundle.job_id,
             source_type=bundle.source_type,
@@ -978,6 +1187,15 @@ def _process_queue_audio_job(bundle, working_job: Path, cfg: Config) -> bool:
             validation=bundle.validation,
         )
         manifest.save(output_dir)
+        print(f"[simple-queue] Generated manifest with {len(artifacts)} variant(s)")
+        
+        return True
+    
+    except Exception as e:
+        print(f"[simple-queue] Error processing audio job: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
         
         print(f"[simple-queue] Generated manifest for {bundle.job_id}")
         
