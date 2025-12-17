@@ -87,15 +87,25 @@ services:
       - MP3_ENCODING=cbr320
       # Where to send corrupt inputs: archive (default) or quarantine
       - CORRUPT_DEST=archive
+      # Queue-based pipeline (Phase 2/3)
+      - QUEUE_ENABLED=true
+      - QUEUE_YOUTUBE_AUDIO=/queues/youtube_audio
+      - QUEUE_YOUTUBE_VIDEO=/queues/youtube_video
+      - QUEUE_OTHER=/queues/other
+      - OUTPUTS_DIR=/data/outputs
     volumes:
       - ./pipeline-data/incoming:/data/incoming
       - ./pipeline-data/working:/data/working
       - ./pipeline-data/output:/data/output
+      - ./pipeline-data/outputs:/data/outputs
       - ./pipeline-data/db:/data/db
       - ./pipeline-data/logs:/data/logs
       - ./pipeline-data/models:/models
       - ./pipeline-data/archive:/data/archive
       - ./pipeline-data/quarantine:/data/quarantine
+      - ./queues/youtube_audio:/queues/youtube_audio
+      - ./queues/youtube_video:/queues/youtube_video
+      - ./queues/other:/queues/other
     networks:
       - internal
     restart: unless-stopped
@@ -226,7 +236,45 @@ services:
       - filebrowser
       - deemix
 
+  youtube-retriever:
+    build:
+      context: ./services/youtube_retriever
+    container_name: instrumental-youtube-retriever
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Operating mode: audio | video | both
+      - YTDL_MODE=audio
+      # Audio format for extraction: m4a | flac | mp3 | wav
+      - YTDL_AUDIO_FORMAT=m4a
+      # Duration validation tolerances
+      - YTDL_DURATION_TOL_SEC=2.0
+      - YTDL_DURATION_TOL_PCT=0.01
+      - YTDL_FAIL_ON_DURATION_MISMATCH=true
+      # yt-dlp options
+      - YTDL_QUIET=false
+      - YTDL_NO_WARNINGS=true
+      - YTDL_SOCKET_TIMEOUT=30
+      # Logging
+      - LOG_DIR=/data/logs
+      - LOG_LEVEL=info
+      # Work directory
+      - WORKING_DIR=/tmp/ytdl_work
+      # Request handling (watch for .txt files with URLs)
+      - REQUESTS_DIR=/data/requests
+    volumes:
+      - ./pipeline-data/logs:/data/logs
+      - ./pipeline-data/requests:/data/requests
+      - ./queues/youtube_audio:/queues/youtube_audio
+      - ./queues/youtube_video:/queues/youtube_video
+      - /tmp/ytdl_work:/tmp/ytdl_work
+    networks:
+      - internal
+    depends_on:
+      - instrumental-simple
+
   nas-sync:
+
     build:
       context: ./sync-scripts
     container_name: instrumental-nas-sync
