@@ -1,0 +1,27 @@
+# Core audio/video processing
+yt-dlp>=2025.1.0
+mutagen>=1.47.0
+numpy>=1.24.0
+scipy>=1.10.0
+librosa>=0.10.0
+torch>=2.0.0
+
+# Web UI
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# OAuth and authentication
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
+# PO Token provider for YouTube bot detection
+bgutil-ytdlp-pot-provider>=1.2.0
+
+# Cloud storage (S3, MinIO)
+boto3>=1.26.0
+
+# Testing and development
+pytest==8.4.1
+watchdog==6.0.0
+PyYAML==6.0.2

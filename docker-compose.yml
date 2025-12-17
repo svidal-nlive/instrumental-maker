@@ -274,29 +274,62 @@ services:
       - instrumental-simple
 
   nas-sync:
-
     build:
-      context: ./sync-scripts
+      context: ./services/nas_sync_service
     container_name: instrumental-nas-sync
     restart: unless-stopped
     environment:
-      # Sync mode: manual, scheduled, continuous, once
-      - SYNC_MODE=${NAS_SYNC_MODE:-manual}
-      # Delete files after sync (false = keep files in Library)
-      - DELETE_AFTER_SYNC=${NAS_DELETE_AFTER_SYNC:-false}
-      # Interval for continuous mode (seconds)
-      - SYNC_INTERVAL=${NAS_SYNC_INTERVAL:-300}
-      # Log file path
-      - SYNC_LOG=/data/logs/nas_sync.jsonl
-      # Trigger file for manual sync (shared with webui via output volume)
-      - SYNC_TRIGGER_FILE=/data/output/.sync_trigger
+      # Core paths
+      - OUTPUTS_DIR=/data/outputs
+      - NAS_SYNC_WORK_DIR=/data/nas-sync-work
+      - NAS_SYNC_LOG_FILE=/data/logs/nas-sync.jsonl
+      
+      # Sync backend: rsync | s3 | scp | local
+      - NAS_SYNC_METHOD=${NAS_SYNC_METHOD:-rsync}
+      
+      # Remote root paths (backend-specific)
+      - NAS_REMOTE_ROOT_AUDIO=${NAS_REMOTE_ROOT_AUDIO:-}
+      - NAS_REMOTE_ROOT_VIDEO=${NAS_REMOTE_ROOT_VIDEO:-}
+      - NAS_REMOTE_ROOT_STEMS=${NAS_REMOTE_ROOT_STEMS:-}
+      
+      # Route definitions (JSON string)
+      - NAS_SYNC_ROUTES=${NAS_SYNC_ROUTES:-}
+      
+      # Rsync options
+      - NAS_RSYNC_BW_LIMIT=${NAS_RSYNC_BW_LIMIT:-0}
+      - NAS_RSYNC_COMPRESS=${NAS_RSYNC_COMPRESS:-true}
+      
+      # S3 options (if using S3 backend)
+      - NAS_S3_BUCKET=${NAS_S3_BUCKET:-}
+      - NAS_S3_PREFIX=${NAS_S3_PREFIX:-instrumental-maker}
+      - NAS_S3_REGION=${NAS_S3_REGION:-us-east-1}
+      - NAS_S3_ENDPOINT=${NAS_S3_ENDPOINT:-}
+      
+      # SCP options (if using SCP backend)
+      - NAS_SCP_HOST=${NAS_SCP_HOST:-}
+      - NAS_SCP_USER=${NAS_SCP_USER:-}
+      - NAS_SCP_KEY=${NAS_SCP_KEY:-/home/user/.ssh/id_rsa}
+      
+      # Behavior
+      - NAS_SKIP_ON_MISSING_REMOTE=${NAS_SKIP_ON_MISSING_REMOTE:-true}
+      - NAS_DRY_RUN=${NAS_DRY_RUN:-false}
+      - NAS_DAEMON_MODE=${NAS_DAEMON_MODE:-true}
+      - NAS_POLL_INTERVAL_SEC=${NAS_POLL_INTERVAL_SEC:-5}
+      
+      # Logging
+      - NAS_LOG_LEVEL=${NAS_LOG_LEVEL:-INFO}
+    
     volumes:
-      - ./pipeline-data/output:/data/output  # Read/write for sync
-      - ./pipeline-data/logs:/data/logs      # For sync logging
-      - ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
-      - ~/.ssh/known_hosts:/root/.ssh/known_hosts:ro
+      - ./pipeline-data/outputs:/data/outputs
+      - ./pipeline-data/logs:/data/logs
+      - ./pipeline-data/nas-sync-work:/data/nas-sync-work
+      # Mount NAS/storage as needed (customize for your setup)
+      # - /mnt/nas:/mnt/nas
+      # - ~/.ssh:/root/.ssh:ro  # For SCP backend
+    
     networks:
       - internal
+    
     depends_on:
       - instrumental-simple
 

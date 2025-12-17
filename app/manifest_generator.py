@@ -7,7 +7,7 @@ enabling NAS Sync to route them to configured remote folders.
 
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 from .job_bundle import JobManifest, ArtifactMetadata, ValidationResult
@@ -106,7 +106,7 @@ class ManifestGenerator:
             artist=artist,
             album=album,
             title=title,
-            processed_at=datetime.utcnow().isoformat() + "Z",
+            processed_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             artifacts=artifacts,
             validation=validation,
             stems_generated=len(audio_variants or []) > 1,
