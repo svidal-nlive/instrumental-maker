@@ -33,6 +33,17 @@ except ImportError:
 from .utils import ensure_dir, sanitize_filename
 import json
 
+# Queue-based pipeline modules (Phase 2 refactor)
+try:
+    from .queue_consumer import QueueConsumer
+    from .manifest_generator import ManifestGenerator
+    from .job_bundle import JobManifest, ArtifactMetadata
+except ImportError:
+    QueueConsumer = None
+    ManifestGenerator = None
+    JobManifest = None
+    ArtifactMetadata = None
+
 
 SUPPORTED_EXTS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus"}
 
@@ -732,6 +743,257 @@ def process_one(cfg: Config) -> bool:
     return True
 
 
+def process_one_queue(cfg: Config) -> bool:
+    """
+    Queue-based job processor (Phase 2 refactor).
+    
+    Discovers jobs from queue folders, processes them, generates manifests,
+    and archives the job bundles.
+    """
+    if not QueueConsumer or not ManifestGenerator:
+        print("[simple-queue] Queue modules not available; skipping queue processing")
+        return False
+    
+    # Initialize queue consumer
+    queue_folders = {
+        "youtube_audio": Path(cfg.QUEUE_YOUTUBE_AUDIO),
+        "youtube_video": Path(cfg.QUEUE_YOUTUBE_VIDEO),
+        "other": Path(cfg.QUEUE_OTHER),
+    }
+    consumer = QueueConsumer(queue_folders)
+    
+    # Discover available jobs
+    discovered = consumer.discover_jobs()
+    if not any(discovered.values()):
+        return False  # No jobs available
+    
+    # Process in priority order: youtube_audio > other > youtube_video
+    for queue_type in ["youtube_audio", "other", "youtube_video"]:
+        jobs = discovered.get(queue_type, [])
+        if not jobs:
+            continue
+        
+        job_folder = jobs[0]  # Pick oldest
+        print(f"[simple-queue] Discovered {queue_type} job: {job_folder.name}")
+        
+        # Load job bundle
+        bundle = consumer.load_job_bundle(job_folder)
+        if not bundle:
+            print(f"[simple-queue] Failed to load bundle from {job_folder}; archiving to fail")
+            consumer.archive_job(job_folder, Path(cfg.ARCHIVE_DIR), "fail")
+            return True
+        
+        # Claim job (move to working folder)
+        working_dir = Path(cfg.WORKING)
+        working_job = consumer.claim_job(job_folder, working_dir)
+        if not working_job:
+            print(f"[simple-queue] Failed to claim job {job_folder.name}")
+            return False
+        
+        # Process the job based on queue type
+        success = False
+        try:
+            if queue_type == "youtube_video":
+                # Just validate and archive video (no processing)
+                success = _process_queue_video_job(bundle, working_job, cfg)
+            else:
+                # Process audio (with variants if requested)
+                success = _process_queue_audio_job(bundle, working_job, cfg)
+        
+        except Exception as e:
+            print(f"[simple-queue] Processing failed: {e}")
+            success = False
+        
+        # Archive the job bundle
+        archive_status = "success" if success else "fail"
+        consumer.archive_job(working_job, Path(cfg.ARCHIVE_DIR), archive_status)
+        
+        return success
+    
+    return False
+
+
+def _process_queue_video_job(bundle, working_job: Path, cfg: Config) -> bool:
+    """
+    Process a YouTube video job (archive only, no audio processing).
+    Video jobs just get organized and manifested.
+    """
+    output_dir = Path(cfg.OUTPUTS_DIR) / bundle.job_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create files subdirectory
+    files_dir = output_dir / "files" / "video"
+    files_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Copy video file if present
+    if bundle.video_path and bundle.video_path.exists():
+        dest_video = files_dir / bundle.video_path.name
+        shutil.copy2(bundle.video_path, dest_video)
+        print(f"[simple-queue] Archived video: {dest_video}")
+        
+        # Generate manifest
+        try:
+            manifest = ManifestGenerator.generate_for_job(
+                job_id=bundle.job_id,
+                source_type=bundle.source_type,
+                artist=bundle.artist,
+                album=bundle.album,
+                title=bundle.title,
+                output_dir=output_dir,
+                video_artifact={
+                    "filename": dest_video.name,
+                    "container": "mp4",
+                },
+                validation=bundle.validation,
+            )
+            manifest.save(output_dir)
+            print(f"[simple-queue] Generated manifest for {bundle.job_id}")
+            return True
+        except Exception as e:
+            print(f"[simple-queue] Failed to generate manifest: {e}")
+            return False
+    
+    return True
+
+
+def _process_queue_audio_job(bundle, working_job: Path, cfg: Config) -> bool:
+    """
+    Process a queue-based audio job (YouTube audio or other sources).
+    Processes audio through instrumental extraction and variant generation.
+    """
+    if not bundle.audio_path or not bundle.audio_path.exists():
+        print(f"[simple-queue] Audio file not found: {bundle.audio_path}")
+        return False
+    
+    output_dir = Path(cfg.OUTPUTS_DIR) / bundle.job_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"[simple-queue] Processing {bundle.source_type} audio: {bundle.title}")
+    
+    # For now, use legacy instrumental generation
+    # TODO: Extend to support variants and stem preservation
+    try:
+        # Run the same processing pipeline as legacy process_one
+        # but on the audio file from the bundle
+        src = bundle.audio_path
+        duration = _ffprobe_duration_sec(src)
+        plan = _chunk_plan_seconds(duration, chunk_sec=120, overlap_sec=cfg.CHUNK_OVERLAP_SEC)
+        chunks: List[Path] = []
+        
+        work = Path(cfg.WORKING) / f"queue_{bundle.job_id}"
+        ensure_dir(work)
+        
+        print(f"[simple-queue] Audio duration: {duration:.1f}s")
+        print(f"[simple-queue] Creating {len(plan)} chunks")
+        
+        # Extract chunks
+        for i, (start, dur, _, _) in enumerate(plan):
+            cpath = work / f"chunk_{i:03d}.wav"
+            _ffmpeg_extract(src, cpath, start, dur, cfg.SAMPLE_RATE, cfg.FFMPEG_THREADS)
+            chunks.append(cpath)
+        
+        # Process with demucs
+        stems: List[Path] = []
+        max_retries = cfg.DEMUCS_MAX_RETRIES
+        chunk_timeout_sec = cfg.DEMUCS_CHUNK_TIMEOUT_SEC if cfg.DEMUCS_CHUNK_TIMEOUT_SEC > 0 else max(600, int(120 * 5))
+        
+        for i, c in enumerate(chunks):
+            out_dir = work / f"demucs_{i:03d}"
+            retry_count = 0
+            success = False
+            last_error = None
+            
+            while retry_count <= max_retries and not success:
+                try:
+                    if retry_count > 0:
+                        if out_dir.exists():
+                            try:
+                                shutil.rmtree(out_dir)
+                            except Exception:
+                                pass
+                    
+                    acc = _demucs_no_vocals(
+                        c, out_dir, cfg.MODEL, cfg.DEMUCS_DEVICE, cfg.DEMUCS_JOBS,
+                        chunk_index=i, total_chunks=len(chunks), timeout_sec=chunk_timeout_sec
+                    )
+                    stems.append(acc)
+                    success = True
+                
+                except TimeoutError as e:
+                    last_error = e
+                    print(f"[simple-queue] Chunk {i} timed out (retry {retry_count})")
+                    retry_count += 1
+                
+                except Exception as e:
+                    last_error = e
+                    print(f"[simple-queue] Chunk {i} failed: {e} (retry {retry_count})")
+                    retry_count += 1
+            
+            if not success:
+                raise RuntimeError(f"Failed to process chunk {i}: {last_error}")
+        
+        # Merge stems
+        final_wav = work / "instrumental.wav"
+        _concat_with_crossfades(stems, final_wav, cfg.CROSSFADE_MS, cfg.FFMPEG_THREADS)
+        
+        # Encode to audio file
+        files_audio_dir = output_dir / "files" / "audio"
+        files_audio_dir.mkdir(parents=True, exist_ok=True)
+        
+        filename = f"{sanitize_filename(bundle.artist)} - {sanitize_filename(bundle.title)}.m4a"
+        output_audio = files_audio_dir / filename
+        
+        # Tag and encode
+        _encode_and_tag(
+            final_wav, output_audio,
+            "[INST_QUEUE__model-htdemucs__sr-44100__bit-16]",
+            bundle.cover_path, cfg.FFMPEG_THREADS,
+            bundle.title, bundle.artist, bundle.album
+        )
+        
+        print(f"[simple-queue] Generated instrumental: {filename}")
+        
+        # Generate manifest with artifact
+        artifacts = [
+            {
+                "variant": "instrumental",
+                "label": "Instrumental",
+                "filename": filename,
+                "codec": "aac",
+                "duration_sec": duration,
+            }
+        ]
+        
+        # TODO: Add variant support (no_drums, drums_only) here
+        
+        manifest = ManifestGenerator.generate_for_job(
+            job_id=bundle.job_id,
+            source_type=bundle.source_type,
+            artist=bundle.artist,
+            album=bundle.album,
+            title=bundle.title,
+            output_dir=output_dir,
+            audio_variants=artifacts,
+            stems_preserved=cfg.PRESERVE_STEMS,
+            validation=bundle.validation,
+        )
+        manifest.save(output_dir)
+        
+        print(f"[simple-queue] Generated manifest for {bundle.job_id}")
+        
+        # Cleanup
+        try:
+            shutil.rmtree(work)
+        except OSError:
+            pass
+        
+        return True
+    
+    except Exception as e:
+        print(f"[simple-queue] Processing failed: {e}")
+        return False
+
+
 def _pid_is_running(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -856,6 +1118,14 @@ def main(argv: Optional[List[str]] = None):
     ensure_dir(state_dir)
     singleton_lock = state_dir / "simple_runner.pid"
     acquired_pid: Optional[int] = None
+    
+    # Determine mode: queue or legacy
+    use_queue = cfg.QUEUE_ENABLED
+    if use_queue:
+        print("[simple] Queue-based mode enabled")
+    else:
+        print("[simple] Legacy file-watcher mode")
+    
     try:
         if daemon:
             acquired_pid = _acquire_singleton_lock(singleton_lock)
@@ -867,8 +1137,14 @@ def main(argv: Optional[List[str]] = None):
             stale_cleaned = _cleanup_stale_working_dirs(working_dir)
             if stale_cleaned > 0:
                 print(f"[simple] Cleaned up {stale_cleaned} stale working director{'y' if stale_cleaned == 1 else 'ies'}")
+        
         while True:
-            progressed = process_one(cfg)
+            # Use queue-based or legacy processor
+            if use_queue:
+                progressed = process_one_queue(cfg)
+            else:
+                progressed = process_one(cfg)
+            
             if not daemon:
                 break
             if not progressed:
@@ -880,6 +1156,7 @@ def main(argv: Optional[List[str]] = None):
                     singleton_lock.unlink()
             except OSError:
                 pass
+
 
 
 if __name__ == "__main__":

@@ -133,3 +133,21 @@ class Config:
     # Staging behavior: when enabled, watcher moves inputs from INCOMING to STAGING before enqueue
     # to avoid rescans/archival while processing. Disabled by default to preserve legacy/tests.
     MOVE_TO_STAGING_ENABLED = env_bool("MOVE_TO_STAGING_ENABLED", "false")
+
+    # Queue-based pipeline (Phase 2 refactor)
+    # Enable queue-based job discovery (replaces legacy /incoming/ watcher)
+    QUEUE_ENABLED = env_bool("QUEUE_ENABLED", "false")
+    # Queue folder paths (mounted from retrieval services)
+    QUEUE_YOUTUBE_AUDIO = _env_clean("QUEUE_YOUTUBE_AUDIO", "/queues/youtube_audio")
+    QUEUE_YOUTUBE_VIDEO = _env_clean("QUEUE_YOUTUBE_VIDEO", "/queues/youtube_video")
+    QUEUE_OTHER = _env_clean("QUEUE_OTHER", "/queues/other")
+    # Output directory for processed jobs (contains manifest.json + artifacts)
+    OUTPUTS_DIR = _env_clean("OUTPUTS_DIR", "/data/outputs")
+
+    # Audio variant generation
+    # Generate "no drums" variant (instrumental with drums removed)
+    GENERATE_NO_DRUMS_VARIANT = env_bool("GENERATE_NO_DRUMS_VARIANT", "false")
+    # Generate "drums only" variant (drums stem isolated)
+    GENERATE_DRUMS_ONLY_VARIANT = env_bool("GENERATE_DRUMS_ONLY_VARIANT", "false")
+    # Preserve stem .wav files in output (for further processing or archival)
+    PRESERVE_STEMS = env_bool("PRESERVE_STEMS", "false")
