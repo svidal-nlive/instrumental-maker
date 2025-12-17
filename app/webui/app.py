@@ -8,7 +8,14 @@ from werkzeug.utils import secure_filename
 import mimetypes
 
 # Import routes
-from app.webui.routes import dashboard, files, processing, logs, storage
+from app.webui.routes import dashboard, files, processing, logs, storage, nas, youtube
+
+# Try to import youtube_auth (requires google-auth-oauthlib)
+try:
+    from app.webui.routes import youtube_auth
+    HAS_OAUTH = True
+except ImportError:
+    HAS_OAUTH = False
 
 def create_app():
     """Create and configure the Flask application."""
@@ -24,6 +31,7 @@ def create_app():
     app.config['ARCHIVE_DIR'] = Path(os.environ.get('ARCHIVE_DIR', '/data/archive'))
     app.config['QUARANTINE_DIR'] = Path(os.environ.get('QUARANTINE_DIR', '/data/quarantine'))
     app.config['DB_PATH'] = Path(os.environ.get('DB_PATH', '/data/db'))
+    app.config['NAS_SYNC_LOG'] = Path(os.environ.get('NAS_SYNC_LOG', '/data/logs/nas_sync.jsonl'))
     
     # Register blueprints
     app.register_blueprint(dashboard.bp)
@@ -31,6 +39,12 @@ def create_app():
     app.register_blueprint(processing.bp)
     app.register_blueprint(logs.bp)
     app.register_blueprint(storage.bp)
+    app.register_blueprint(nas.bp)
+    app.register_blueprint(youtube.bp)
+    
+    # Register OAuth blueprint if available
+    if HAS_OAUTH:
+        app.register_blueprint(youtube_auth.bp)
     
     @app.route('/')
     def index():

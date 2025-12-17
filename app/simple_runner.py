@@ -172,21 +172,68 @@ def _compute_tags(src: Path, album_root: Optional[Path]) -> Tuple[str, str, str]
     return title, artist, album
 
 
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except FileNotFoundError:
+        return time.time()
+
+
+def _file_size(path: Path) -> int:
+    """Get file size, return 0 if file doesn't exist."""
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return 0
+
+
+def _is_file_stable(path: Path, stability_seconds: float = 2.0) -> bool:
+    """
+    Check if a file has been stable (unchanged size and mtime) for the specified duration.
+    This prevents picking up files that are still being written (e.g., during download/conversion).
+    """
+    try:
+        initial_size = _file_size(path)
+        initial_mtime = _mtime(path)
+        
+        # Check how old the file is - if recently modified, wait for stability
+        age = time.time() - initial_mtime
+        if age < stability_seconds:
+            # File was modified too recently, wait and check again
+            time.sleep(stability_seconds)
+            
+            # Re-check if file still exists and compare
+            if not path.exists():
+                return False
+            
+            new_size = _file_size(path)
+            new_mtime = _mtime(path)
+            
+            # If size or mtime changed, file is still being written
+            if new_size != initial_size or new_mtime != initial_mtime:
+                return False
+        
+        return True
+    except (OSError, IOError):
+        return False
+
+
 def _scan_candidates(incoming: Path) -> Tuple[List[Path], List[Path]]:
     # lone files in incoming root, and album roots (dirs directly under incoming that contain any audio)
+    # Only include files that have been stable (not being written to) for at least 2 seconds
     lone: List[Path] = []
     album_roots: List[Path] = []
     if not incoming.exists():
         return lone, album_roots
-    # lone files (non-recursive)
+    # lone files (non-recursive) - only include stable files
     for p in incoming.iterdir():
-        if p.is_file() and _is_audio(p):
+        if p.is_file() and _is_audio(p) and _is_file_stable(p):
             lone.append(p)
-    # album roots (top-level dirs with audio inside)
+    # album roots (top-level dirs with audio inside) - only include if all audio files are stable
     for d in incoming.iterdir():
         if d.is_dir():
-            has_audio = any(_is_audio(x) for x in d.rglob("*"))
-            if has_audio:
+            audio_files = [x for x in d.rglob("*") if _is_audio(x)]
+            if audio_files and all(_is_file_stable(f) for f in audio_files):
                 album_roots.append(d)
     return lone, album_roots
 
@@ -194,13 +241,6 @@ def _scan_candidates(incoming: Path) -> Tuple[List[Path], List[Path]]:
 # Public wrapper for tests and tooling
 def scan_incoming_candidates(incoming: Path) -> Tuple[List[Path], List[Path]]:
     return _scan_candidates(incoming)
-
-
-def _mtime(path: Path) -> float:
-    try:
-        return path.stat().st_mtime
-    except FileNotFoundError:
-        return time.time()
 
 
 def _pick_next(incoming: Path, album_lock: Path) -> Optional[Job]:

@@ -1,2 +1,13 @@
 Flask==3.0.0
 Werkzeug==3.0.1
+yt-dlp>=2025.1.0
+mutagen>=1.47.0
+
+# PO Token provider plugin for YouTube bot detection bypass
+# This is the recommended "set and forget" solution
+bgutil-ytdlp-pot-provider>=1.2.0
+
+# Google OAuth (optional - for manual cookie refresh)
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0

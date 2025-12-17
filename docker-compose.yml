@@ -1,4 +1,15 @@
 services:
+  # PO Token Provider for YouTube (bypasses bot detection)
+  # This is the "set and forget" solution for YouTube downloads
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: instrumental-bgutil
+    restart: unless-stopped
+    mem_limit: 256m
+    networks:
+      - internal
+    # No port exposed - only accessible within the docker network
+
   webui:
     build: .
     container_name: instrumental-webui
@@ -18,6 +29,10 @@ services:
       - ARCHIVE_DIR=/data/archive
       - QUARANTINE_DIR=/data/quarantine
       - DB_PATH=/data/db
+      # PO Token Provider URL for yt-dlp (for YouTube bot detection bypass)
+      - YTDLP_POT_PROVIDER_URL=http://instrumental-bgutil:4416
+      # NAS sync trigger file (shared with nas-sync container via output volume)
+      - SYNC_TRIGGER_FILE=/data/output/.sync_trigger
     volumes:
       - ./pipeline-data/incoming:/data/incoming
       - ./pipeline-data/working:/data/working
@@ -26,9 +41,12 @@ services:
       - ./pipeline-data/logs:/data/logs
       - ./pipeline-data/archive:/data/archive
       - ./pipeline-data/quarantine:/data/quarantine
+      - ./pipeline-data/config:/data/config
     networks:
       - internal
       - proxy
+    depends_on:
+      - bgutil-provider
     # Traefik labels commented out - using Cloudflare Tunnel instead
     # labels:
     #   - traefik.enable=true
@@ -213,8 +231,20 @@ services:
       context: ./sync-scripts
     container_name: instrumental-nas-sync
     restart: unless-stopped
+    environment:
+      # Sync mode: manual, scheduled, continuous, once
+      - SYNC_MODE=${NAS_SYNC_MODE:-manual}
+      # Delete files after sync (false = keep files in Library)
+      - DELETE_AFTER_SYNC=${NAS_DELETE_AFTER_SYNC:-false}
+      # Interval for continuous mode (seconds)
+      - SYNC_INTERVAL=${NAS_SYNC_INTERVAL:-300}
+      # Log file path
+      - SYNC_LOG=/data/logs/nas_sync.jsonl
+      # Trigger file for manual sync (shared with webui via output volume)
+      - SYNC_TRIGGER_FILE=/data/output/.sync_trigger
     volumes:
-      - ./pipeline-data/output:/data/output  # Read/write to delete after sync
+      - ./pipeline-data/output:/data/output  # Read/write for sync
+      - ./pipeline-data/logs:/data/logs      # For sync logging
       - ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
       - ~/.ssh/known_hosts:/root/.ssh/known_hosts:ro
     networks:

@@ -28,7 +28,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         PIP_NO_CACHE_DIR=0 pip install demucs==4.0.0 librosa==0.10.2.post1 \
             soundfile==0.12.1 numpy==1.26.4 mutagen==1.47.0 pydub==0.25.1 \
             watchdog==4.0.1 pyyaml==6.0.2 python-dotenv==1.0.1 \
-            minio==7.2.9 Flask==3.0.0 Werkzeug==3.0.1 && \
+            minio==7.2.9 Flask==3.0.0 Werkzeug==3.0.1 yt-dlp \
+            google-auth google-auth-oauthlib google-api-python-client \
+            bgutil-ytdlp-pot-provider && \
         find /root/.cache -type f -delete 2>/dev/null || true
 
 # Final minimal sanity + cleanup: show versions then remove build tools

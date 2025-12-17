@@ -134,6 +134,22 @@ def delete_file():
         current_app.config['QUARANTINE_DIR']
     ]
     
+    # If the path is not absolute, try to resolve it relative to allowed directories
+    # This handles paths from the library API which are relative to OUTPUT_DIR
+    if not file_path.is_absolute():
+        resolved_path = None
+        for allowed_dir in allowed_dirs:
+            candidate = allowed_dir / file_path
+            if candidate.exists():
+                resolved_path = candidate
+                break
+        
+        if resolved_path:
+            file_path = resolved_path
+        else:
+            # Try output dir specifically for library paths
+            file_path = current_app.config['OUTPUT_DIR'] / file_path
+    
     allowed = False
     for allowed_dir in allowed_dirs:
         try:
@@ -149,6 +165,20 @@ def delete_file():
     try:
         if file_path.is_file():
             file_path.unlink()
+            
+            # Clean up empty parent directories up to the output root
+            parent = file_path.parent
+            output_dir = current_app.config['OUTPUT_DIR'].resolve()
+            while parent.resolve() != output_dir:
+                try:
+                    if parent.is_dir() and not any(parent.iterdir()):
+                        parent.rmdir()
+                        parent = parent.parent
+                    else:
+                        break
+                except OSError:
+                    break
+                    
         elif file_path.is_dir():
             shutil.rmtree(file_path)
         else:
