@@ -1,5 +1,6 @@
 """Phase 3 WebUI Tests: NAS Sync Monitoring & Job Manifest Viewer"""
 import json
+import os
 import pytest
 import tempfile
 from pathlib import Path
@@ -13,18 +14,36 @@ from app.webui.models import ConfigDB
 
 @pytest.fixture
 def app():
-    """Create Flask app with test configuration."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Set up environment for test
-        import os
-        os.environ['DB_PATH'] = tmpdir
-        os.environ['OUTPUTS_DIR'] = tmpdir
-        os.environ['NAS_SYNC_LOG'] = str(Path(tmpdir) / 'nas_sync.jsonl')
-        
-        app = create_app()
-        app.config['TESTING'] = True
-        
-        yield app
+    """Create Flask app with test configuration using actual pipeline directories."""
+    import os
+    
+    # Use actual pipeline directories for consistency between testing and production
+    pipeline_root = Path(__file__).parent.parent / 'pipeline-data'
+    db_dir = pipeline_root / 'db'
+    outputs_dir = pipeline_root / 'outputs'
+    logs_dir = pipeline_root / 'logs'
+    
+    # Ensure directories exist with proper permissions
+    db_dir.mkdir(parents=True, exist_ok=True)
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Set environment to use actual pipeline directories
+    os.environ['DB_PATH'] = str(db_dir)
+    os.environ['OUTPUTS_DIR'] = str(outputs_dir)
+    os.environ['NAS_SYNC_LOG'] = str(logs_dir / 'nas_sync.jsonl')
+    
+    app = create_app()
+    app.config['TESTING'] = True
+    
+    yield app
+    
+    # Cleanup: Remove test artifacts from actual directories
+    # Keep the directory structure intact but remove test data
+    test_job_dir = outputs_dir / 'test_job_001'
+    if test_job_dir.exists():
+        import shutil
+        shutil.rmtree(test_job_dir)
 
 
 @pytest.fixture
@@ -35,8 +54,8 @@ def client(app):
 
 @pytest.fixture
 def nas_log_file(app):
-    """Create sample NAS sync log."""
-    log_path = Path(app.config['NAS_SYNC_LOG'])
+    """Create sample NAS sync log in actual pipeline directory."""
+    log_path = Path(os.environ.get('NAS_SYNC_LOG'))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     
     # Write sample events
@@ -74,23 +93,27 @@ def nas_log_file(app):
         for event in events:
             f.write(json.dumps(event) + '\n')
     
-    return log_path
+    yield log_path
+    
+    # Cleanup: Remove test log file
+    if log_path.exists():
+        log_path.unlink()
 
 
 @pytest.fixture
 def sample_job(app):
-    """Create sample job with artifacts."""
+    """Create sample job with artifacts in actual pipeline directory."""
     import os
-    # Make sure OUTPUTS_DIR env var is set
-    outputs_dir = Path(os.environ.get('OUTPUTS_DIR', tempfile.gettempdir() + '/outputs'))
-    outputs_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Temporarily set the env var for the API routes
-    old_env = os.environ.get('OUTPUTS_DIR')
-    os.environ['OUTPUTS_DIR'] = str(outputs_dir)
+    # Use the OUTPUTS_DIR set by app fixture (actual pipeline directory)
+    outputs_dir = Path(os.environ.get('OUTPUTS_DIR'))
     
     job_id = 'test_job_001'
     job_dir = outputs_dir / job_id
+    
+    # Remove if exists from previous test run
+    if job_dir.exists():
+        import shutil
+        shutil.rmtree(job_dir)
     
     # Create job directory structure
     (job_dir / 'instrumental').mkdir(parents=True, exist_ok=True)
@@ -124,12 +147,8 @@ def sample_job(app):
     
     yield job_id, job_dir
     
-    # Cleanup: restore old env var
-    import os
-    if old_env is None:
-        os.environ.pop('OUTPUTS_DIR', None)
-    else:
-        os.environ['OUTPUTS_DIR'] = old_env
+    # Cleanup: Remove test job directory from actual pipeline
+    # This is done in app fixture cleanup
 
 
 class TestNASSyncStatus:
