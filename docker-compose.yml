@@ -273,6 +273,46 @@ services:
     depends_on:
       - instrumental-simple
 
+  deemix-retriever:
+    build:
+      context: ./services/deemix_retriever
+    container_name: instrumental-deemix-retriever
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Download quality (FLAC, MP3_320, MP3_128, AAC_256, etc.)
+      - DEEMIX_QUALITY=${DEEMIX_QUALITY:-FLAC}
+      # Number of parallel download workers
+      - MAX_CONCURRENT_DEEMIX=${MAX_CONCURRENT_DEEMIX:-2}
+      # Seconds between checking for new requests
+      - WATCH_INTERVAL=10
+      # Timeout per download (seconds, default 30 min)
+      - DEEMIX_DOWNLOAD_TIMEOUT=1800
+      # Log level
+      - LOG_LEVEL=INFO
+      # Skip non-critical errors and continue
+      - SKIP_ON_ERROR=true
+      # Queue paths
+      - QUEUE_OTHER=/queues/other/
+      - DEEMIX_WORKING_DIR=/tmp/deemix_retriever
+      - DEEMIX_CACHE_DIR=/home/deemix/.cache/deemix
+      - DEEMIX_CONFIG_DIR=/home/deemix/.config/deemix
+    volumes:
+      - ./pipeline-data/logs:/data/logs
+      - ./queues/other:/queues/other
+      - deemix_retriever_cache:/home/deemix/.cache/deemix
+      - deemix_retriever_config:/home/deemix/.config/deemix
+      - /tmp/deemix_retriever:/tmp/deemix_retriever
+    networks:
+      - internal
+    depends_on:
+      - instrumental-simple
+    healthcheck:
+      test: ["CMD", "test", "-d", "/queues/other"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   nas-sync:
     build:
       context: ./services/nas_sync_service
@@ -337,3 +377,7 @@ networks:
   internal:
   proxy:
     external: false
+
+volumes:
+  deemix_retriever_cache:
+  deemix_retriever_config:

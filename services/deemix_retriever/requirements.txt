@@ -1,0 +1,15 @@
+# Deemix Retriever Service Requirements
+# Produces job bundles from Deezer downloads
+
+# Deemix (music downloader) - requires Python 3.8+
+deemix>=3.7.0
+
+# For robust audio processing
+pydub>=0.25.1
+
+# CLI tools (installed via system package manager in Dockerfile)
+# - ffmpeg (audio processing)
+# - ffprobe (metadata extraction)
+
+# Python standard library used:
+# - json, logging, pathlib, subprocess, threading, queue, signal, dataclasses
