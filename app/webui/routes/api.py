@@ -1,7 +1,7 @@
 """API routes for status and configuration endpoints."""
 from flask import Blueprint, jsonify, request, current_app
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import json
 
@@ -49,7 +49,7 @@ def get_status():
         queue_enabled = os.environ.get('QUEUE_ENABLED', 'false').lower() == 'true'
         
         status = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'queue_enabled': queue_enabled,
             'queues': {}
         }
@@ -90,7 +90,7 @@ def get_status():
     except Exception as e:
         return jsonify({
             'error': str(e),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }), 500
 
 @bp.route('/config', methods=['GET'])
@@ -208,5 +208,5 @@ def health():
     """Health check endpoint."""
     return jsonify({
         'status': 'healthy',
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }), 200

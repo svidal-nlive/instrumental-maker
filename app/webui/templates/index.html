@@ -126,6 +126,13 @@
                     </svg>
                     <span class="font-medium">NAS Sync</span>
                 </a>
+                <a href="#" data-page="settings" class="nav-link flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                    </svg>
+                    <span class="font-medium">Settings</span>
+                </a>
                 <a href="#" data-page="youtube" class="nav-link flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path>
@@ -343,6 +350,83 @@
                     <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 border border-gray-200 dark:border-gray-700">
                         <h3 class="text-lg font-bold mb-4">Processing Queue</h3>
                         <div id="queue-content">Loading...</div>
+                    </div>
+                </div>
+
+                <div id="page-settings" class="page-content hidden">
+                    <div class="space-y-6 md:space-y-8">
+                        <!-- Settings Header -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 md:p-6 border border-gray-200 dark:border-gray-700">
+                            <h2 class="text-xl md:text-2xl font-bold mb-2">System Configuration</h2>
+                            <p class="text-gray-600 dark:text-gray-400 text-sm md:text-base">
+                                Manage pipeline settings. Changes apply immediately without restarting services.
+                            </p>
+                        </div>
+
+                        <!-- Settings Tabs -->
+                        <div class="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                            <div class="flex flex-wrap gap-0 border-b border-gray-200 dark:border-gray-700 px-4 md:px-6">
+                                <button class="settings-tab-btn flex-shrink-0 px-4 md:px-6 py-3 font-medium border-b-2 border-primary-600 text-primary-600 dark:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors" data-tab="variant-generation">
+                                    <span class="flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                                        <span class="hidden sm:inline">Variants</span>
+                                    </span>
+                                </button>
+                                <button class="settings-tab-btn flex-shrink-0 px-4 md:px-6 py-3 font-medium border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors" data-tab="demucs">
+                                    <span class="flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                        <span class="hidden sm:inline">Demucs</span>
+                                    </span>
+                                </button>
+                                <button class="settings-tab-btn flex-shrink-0 px-4 md:px-6 py-3 font-medium border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors" data-tab="audio">
+                                    <span class="flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                                        <span class="hidden sm:inline">Audio</span>
+                                    </span>
+                                </button>
+                                <button class="settings-tab-btn flex-shrink-0 px-4 md:px-6 py-3 font-medium border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors" data-tab="youtube">
+                                    <span class="flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        <span class="hidden sm:inline">YouTube</span>
+                                    </span>
+                                </button>
+                                <button class="settings-tab-btn flex-shrink-0 px-4 md:px-6 py-3 font-medium border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors" data-tab="nas-sync">
+                                    <span class="flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
+                                        <span class="hidden sm:inline">NAS</span>
+                                    </span>
+                                </button>
+                                <button class="settings-tab-btn flex-shrink-0 px-4 md:px-6 py-3 font-medium border-b-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors" data-tab="queue">
+                                    <span class="flex items-center space-x-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+                                        <span class="hidden sm:inline">Queue</span>
+                                    </span>
+                                </button>
+                            </div>
+
+                            <!-- Settings Content -->
+                            <div id="settings-content" class="p-4 md:p-6">
+                                <!-- Loading state -->
+                                <div class="flex items-center justify-center py-12">
+                                    <div class="text-center">
+                                        <svg class="w-8 h-8 mx-auto mb-3 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        <p class="text-gray-600 dark:text-gray-400">Loading configuration...</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Settings Help -->
+                        <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                            <p class="text-sm text-blue-800 dark:text-blue-300">
+                                <strong>💡 Configuration Tips:</strong> All settings are loaded from your .env file on startup. 
+                                Changes you make here are saved to the database and persist across restarts. 
+                                You can reset any setting to its original default value.
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -800,5 +884,6 @@
     <script src="{{ url_for('static', filename='js/processing-monitor.js') }}"></script>
     <script src="{{ url_for('static', filename='js/audio-player.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard-monitor.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
 </body>
 </html>

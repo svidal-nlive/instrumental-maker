@@ -2,7 +2,7 @@
 import json
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 class ConfigDB:
@@ -78,7 +78,7 @@ class ConfigDB:
         """
         conn = self._get_connection()
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             # Always JSON serialize for consistency, handles all types
             json_value = json.dumps(value)
             
@@ -195,7 +195,7 @@ class ConfigDB:
             default_getter, data_type = env_defaults[key]
             default_value = default_getter()
             
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             json_value = json.dumps(default_value)
             
             conn.execute(
@@ -211,7 +211,7 @@ class ConfigDB:
         """Update queue status information."""
         conn = self._get_connection()
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             
             cursor = conn.execute("SELECT queue_name FROM queue_status WHERE queue_name = ?", (queue_name,))
             exists = cursor.fetchone() is not None
@@ -271,7 +271,7 @@ class ConfigDB:
         """
         conn = self._get_connection()
         try:
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             
             conn.execute(
                 """INSERT OR REPLACE INTO completed_jobs 
