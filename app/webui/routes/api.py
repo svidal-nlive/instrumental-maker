@@ -210,3 +210,90 @@ def health():
         'status': 'healthy',
         'timestamp': datetime.now(timezone.utc).isoformat()
     }), 200
+@bp.route('/jobs/<job_id>/manifest', methods=['GET'])
+def get_job_manifest(job_id):
+    """Get manifest for a specific job."""
+    try:
+        outputs_dir = Path(os.environ.get('OUTPUTS_DIR', '/data/outputs'))
+        manifest_path = outputs_dir / job_id / 'manifest.json'
+        
+        if not manifest_path.exists():
+            return jsonify({'error': f'Job {job_id} not found'}), 404
+        
+        try:
+            with open(manifest_path) as f:
+                manifest = json.load(f)
+            return jsonify(manifest), 200
+        except json.JSONDecodeError:
+            return jsonify({'error': 'Invalid manifest JSON'}), 500
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@bp.route('/jobs/<job_id>/artifacts', methods=['GET'])
+def get_job_artifacts(job_id):
+    """Get list of artifacts for a job with metadata."""
+    try:
+        outputs_dir = Path(os.environ.get('OUTPUTS_DIR', '/data/outputs'))
+        job_dir = outputs_dir / job_id
+        
+        if not job_dir.exists():
+            return jsonify({'error': f'Job {job_id} not found'}), 404
+        
+        # Get manifest
+        manifest_path = job_dir / 'manifest.json'
+        manifest = {}
+        if manifest_path.exists():
+            try:
+                with open(manifest_path) as f:
+                    manifest = json.load(f)
+            except json.JSONDecodeError:
+                pass
+        
+        # Collect artifact information
+        artifacts = []
+        for artifact_dir in job_dir.iterdir():
+            if artifact_dir.is_dir() and artifact_dir.name != '.tmp':
+                artifact_info = {
+                    'name': artifact_dir.name,
+                    'type': None,
+                    'files': [],
+                    'total_size': 0
+                }
+                
+                # Scan for files
+                for file_path in artifact_dir.rglob('*'):
+                    if file_path.is_file():
+                        size = file_path.stat().st_size
+                        artifact_info['files'].append({
+                            'name': file_path.name,
+                            'path': str(file_path.relative_to(job_dir)),
+                            'size': size
+                        })
+                        artifact_info['total_size'] += size
+                
+                # Determine artifact type
+                if any(f['name'].endswith('.mp3') for f in artifact_info['files']):
+                    artifact_info['type'] = 'audio'
+                elif any(f['name'].endswith('.json') for f in artifact_info['files']):
+                    artifact_info['type'] = 'metadata'
+                elif any(f['name'].endswith(('.png', '.jpg', '.jpeg')) for f in artifact_info['files']):
+                    artifact_info['type'] = 'image'
+                else:
+                    artifact_info['type'] = 'other'
+                
+                artifacts.append(artifact_info)
+        
+        # Sort by type, then name
+        artifacts.sort(key=lambda a: (a['type'], a['name']))
+        
+        return jsonify({
+            'job_id': job_id,
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'total_artifacts': len(artifacts),
+            'manifest': manifest,
+            'artifacts': artifacts
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

@@ -2,13 +2,13 @@
 import os
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from flask import Flask, render_template, jsonify, request, send_file, Response
 from werkzeug.utils import secure_filename
 import mimetypes
 
 # Import routes
-from app.webui.routes import dashboard, files, processing, logs, storage, nas, youtube, api, settings
+from app.webui.routes import dashboard, files, processing, logs, storage, nas, youtube, api, settings, nas_monitor
 from app.webui.models import ConfigDB
 
 # Try to import youtube_auth (requires google-auth-oauthlib)
@@ -194,6 +194,7 @@ def create_app():
     app.register_blueprint(youtube.bp)
     app.register_blueprint(api.bp)
     app.register_blueprint(settings.bp)
+    app.register_blueprint(nas_monitor.bp)
     
     # Register OAuth blueprint if available
     if HAS_OAUTH:
@@ -207,7 +208,7 @@ def create_app():
     @app.route('/health')
     def health():
         """Health check endpoint."""
-        return jsonify({'status': 'healthy', 'timestamp': datetime.utcnow().isoformat()})
+        return jsonify({'status': 'healthy', 'timestamp': datetime.now(timezone.utc).isoformat()})
     
     return app
 

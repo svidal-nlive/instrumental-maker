@@ -311,6 +311,9 @@ async function loadPageData(pageName) {
         case 'nas':
             loadNasStats();
             break;
+        case 'monitoring':
+            loadNASMonitoring();
+            break;
     }
 }
 
